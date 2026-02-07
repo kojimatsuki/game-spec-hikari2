@@ -8,15 +8,23 @@ const THREE = E.THREE;
 
 export function initTitle(container, gameState, onStartGame) {
   let cleaned = false;
-  const scene = E.createScene(0x0f0c29);
-  scene.fog = new THREE.Fog(0x0f0c29, 10, 50);
+  const scene = E.createScene(0x1a1040);
+  scene.fog = new THREE.Fog(0x1a1040, 30, 80);
   const camera = E.createCamera(50);
   camera.position.set(0, 5, 12);
   camera.lookAt(0, 2, 0);
   E.setScene(scene, camera);
 
+  // 追加ライト
+  const purpleLight = new THREE.PointLight(0xaa66ff, 1.5, 40);
+  purpleLight.position.set(0, 10, 5);
+  scene.add(purpleLight);
+  const pinkLight = new THREE.PointLight(0xff66aa, 0.8, 25);
+  pinkLight.position.set(-5, 5, 8);
+  scene.add(pinkLight);
+
   // 床
-  const ground = E.createGridGround(40, 0x1a1a3e, 0x302b63);
+  const ground = E.createGridGround(40, 0x2a1a4e, 0x4030a0);
   scene.add(ground);
 
   // ひかりちゃん
@@ -24,30 +32,48 @@ export function initTitle(container, gameState, onStartGame) {
   hikari.position.set(0, 0, 0);
   scene.add(hikari);
 
-  // ブレインロット（奥に）
+  // ブレインロット（手前右に配置、見える位置）
   const br = E.createBrainrot(0);
-  br.position.set(8, 0, -10);
+  br.position.set(5, 0, -3);
   scene.add(br);
 
   // うんこ達
   const poops = [];
   for (let i = 0; i < 5; i++) {
     const p = E.createPoop();
-    p.position.set((Math.random() - 0.5) * 20, 8 + Math.random() * 5, (Math.random() - 0.5) * 10);
+    p.position.set((Math.random() - 0.5) * 15, 6 + Math.random() * 5, (Math.random() - 0.5) * 8);
     p.userData.vy = -0.03 - Math.random() * 0.02;
     scene.add(p);
     poops.push(p);
   }
 
-  // タイトルテキスト
-  const titleSprite = E.createTextSprite(GAME_TITLE, { fontSize: 30, color: '#ffd700' });
-  titleSprite.position.set(0, 6, 0);
-  titleSprite.scale.set(12, 3, 1);
-  scene.add(titleSprite);
+  // 星の装飾
+  for (let i = 0; i < 15; i++) {
+    const star = E.createStar(0.1 + Math.random() * 0.15);
+    const a = Math.random() * Math.PI * 2, r = 5 + Math.random() * 15;
+    star.position.set(Math.cos(a) * r, 3 + Math.random() * 8, Math.sin(a) * r);
+    scene.add(star);
+  }
 
-  // HTML UI
+  // パーティクル
+  const particles = E.createParticles(30, 0xaa66ff, 0.1);
+  scene.add(particles);
+
+  // HTML UI（タイトル＋ボタン）
   const overlay = E.getOverlay();
   overlay.innerHTML = '';
+
+  // タイトルテキスト（HTMLで表示 - 長いテキストも対応）
+  const titleEl = document.createElement('div');
+  titleEl.style.cssText = 'position:absolute;top:8%;left:50%;transform:translateX(-50%);font-size:clamp(18px,4.5vw,32px);font-weight:bold;text-align:center;padding:0 20px;color:#ffd700;text-shadow:0 0 20px #aa66ff,2px 2px 4px #000;z-index:10;line-height:1.4;';
+  titleEl.textContent = GAME_TITLE;
+  overlay.appendChild(titleEl);
+
+  const subEl = document.createElement('div');
+  subEl.style.cssText = 'position:absolute;top:22%;left:50%;transform:translateX(-50%);font-size:14px;color:#aa88ff;text-shadow:1px 1px 3px #000;z-index:10;';
+  subEl.textContent = '🎮 3Dポリゴンアクション 🎮';
+  overlay.appendChild(subEl);
+
   const btn = document.createElement('button');
   btn.className = 'game-btn start-btn';
   btn.textContent = '🎮 はじめる';
@@ -68,13 +94,17 @@ export function initTitle(container, gameState, onStartGame) {
     t += 0.02;
     hikari.rotation.y = Math.sin(t) * 0.5;
     hikari.position.y = Math.sin(t * 2) * 0.2;
-    br.position.x = 8 + Math.sin(t * 0.5) * 3;
+    br.position.x = 5 + Math.sin(t * 0.5) * 2;
+    br.rotation.y = Math.sin(t * 0.3) * 0.5;
     poops.forEach(p => {
       p.position.y += p.userData.vy;
       p.rotation.z += 0.02;
       if (p.position.y < 0) p.position.y = 10;
     });
+    purpleLight.intensity = 1.5 + Math.sin(t * 2) * 0.3;
+    E.updateParticles(particles);
     camera.position.x = Math.sin(t * 0.3) * 2;
+    camera.lookAt(0, 2, 0);
   });
 
   function cleanup() {
@@ -92,14 +122,26 @@ export function initWorldSelect(container, gameState, onSelectStage) {
   const overlay = E.getOverlay();
   overlay.innerHTML = '';
 
-  const scene = E.createScene(0x1a1a2e);
+  const scene = E.createScene(0x1a1a3e);
+  scene.fog = new THREE.Fog(0x1a1a3e, 30, 60);
   const camera = E.createCamera(50);
   camera.position.set(0, 8, 15);
   camera.lookAt(0, 0, 0);
   E.setScene(scene, camera);
 
-  const ground = E.createGridGround(30, 0x16213e, 0x0f3460);
+  // 追加ライト
+  const centerLight = new THREE.PointLight(0x6688ff, 1.0, 30);
+  centerLight.position.set(0, 8, 5);
+  scene.add(centerLight);
+
+  const ground = E.createGridGround(30, 0x1a2040, 0x2040a0);
   scene.add(ground);
+
+  // タイトル
+  const titleEl = document.createElement('div');
+  titleEl.style.cssText = 'position:absolute;top:5%;left:50%;transform:translateX(-50%);font-size:24px;font-weight:bold;color:#fff;text-shadow:2px 2px 4px #000;z-index:10;';
+  titleEl.textContent = '🌍 ワールド選択';
+  overlay.appendChild(titleEl);
 
   // ワールドを3Dオブジェクトで表現
   const worldObjects = [];
@@ -111,8 +153,10 @@ export function initWorldSelect(container, gameState, onSelectStage) {
 
   worldData.forEach((wd, i) => {
     const g = new THREE.Group();
-    // Platform
-    const plat = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 0.5, 16), new THREE.MeshLambertMaterial({ color: wd.unlocked ? wd.color : 0x444444 }));
+    const plat = new THREE.Mesh(
+      new THREE.CylinderGeometry(2, 2, 0.5, 16),
+      new THREE.MeshLambertMaterial({ color: wd.unlocked ? wd.color : 0x444444 })
+    );
     plat.position.y = 0.25;
     g.add(plat);
 
@@ -120,15 +164,11 @@ export function initWorldSelect(container, gameState, onSelectStage) {
       const m = wd.model();
       m.position.y = 0.5;
       g.add(m);
-      // ラベル
-      const label = E.createTextSprite(`W${i + 1}: ${WORLDS[i].name}`, { fontSize: 28, color: '#ffffff' });
-      label.position.y = 4.5;
-      label.scale.set(6, 1.5, 1);
-      g.add(label);
+      // ラベル（HTMLで表示）
       if (gameState.worldsCompleted[i]) {
-        const check = E.createTextSprite('✅ クリア', { fontSize: 36, color: '#00ff00' });
+        const check = E.createTextSprite('✅', { fontSize: 48 });
         check.position.y = 3.5;
-        check.scale.set(3, 0.8, 1);
+        check.scale.set(2, 2, 1);
         g.add(check);
       }
     } else {
@@ -152,19 +192,30 @@ export function initWorldSelect(container, gameState, onSelectStage) {
     }
   });
 
+  // ワールドラベル（HTMLオーバーレイ）
+  const labelsEl = document.createElement('div');
+  labelsEl.style.cssText = 'position:absolute;bottom:25%;left:0;right:0;display:flex;justify-content:center;gap:20px;z-index:10;';
+  worldData.forEach((wd, i) => {
+    const lbl = document.createElement('div');
+    lbl.style.cssText = `font-size:14px;color:${wd.unlocked ? '#fff' : '#666'};text-align:center;width:100px;text-shadow:1px 1px 2px #000;`;
+    lbl.innerHTML = `${WORLDS[i].icon}<br>${WORLDS[i].name}${gameState.worldsCompleted[i] ? '<br><span style="color:#0f0">クリア</span>' : ''}`;
+    labelsEl.appendChild(lbl);
+  });
+  overlay.appendChild(labelsEl);
+
   // 隠しステージ
   const allClear = gameState.worldsCompleted.every(w => w);
   const secretG = new THREE.Group();
-  const secretPlat = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 0.5, 16), new THREE.MeshLambertMaterial({ color: allClear ? 0xff0066 : 0x444444 }));
+  const secretPlat = new THREE.Mesh(
+    new THREE.CylinderGeometry(2, 2, 0.5, 16),
+    new THREE.MeshLambertMaterial({ color: allClear ? 0xff0066 : 0x444444 })
+  );
   secretPlat.position.y = 0.25;
   secretG.add(secretPlat);
   if (allClear) {
     const ghost = E.createGhost(1.5);
     ghost.position.y = 0.5;
     secretG.add(ghost);
-    const label = E.createTextSprite('隠しステージ', { fontSize: 32, color: '#ff6688' });
-    label.position.y = 4; label.scale.set(5, 1.2, 1);
-    secretG.add(label);
     E.registerClick(secretG, () => {
       if (cleaned) return;
       playSound('tap');
@@ -173,11 +224,18 @@ export function initWorldSelect(container, gameState, onSelectStage) {
     });
   } else {
     const lock = E.createTextSprite('🔒', { fontSize: 60 });
-    lock.position.y = 2; lock.scale.set(2, 2, 1);
+    lock.position.y = 2;
+    lock.scale.set(2, 2, 1);
     secretG.add(lock);
   }
   secretG.position.set(0, 0, -7);
   scene.add(secretG);
+
+  // 隠しステージラベル
+  const secretLabel = document.createElement('div');
+  secretLabel.style.cssText = `position:absolute;bottom:12%;left:50%;transform:translateX(-50%);font-size:14px;color:${allClear ? '#ff6688' : '#666'};text-shadow:1px 1px 2px #000;z-index:10;`;
+  secretLabel.textContent = allClear ? '👻 隠しステージ' : '🔒 ???';
+  overlay.appendChild(secretLabel);
 
   const coinLabel = document.createElement('div');
   coinLabel.className = 'coin-display';
@@ -186,9 +244,11 @@ export function initWorldSelect(container, gameState, onSelectStage) {
 
   let t = 0;
   E.startLoop(() => {
+    if (cleaned) return;
     t += 0.01;
     worldObjects.forEach((wo, i) => { wo.position.y = Math.sin(t + i) * 0.2; });
     secretG.position.y = Math.sin(t + 3) * 0.2;
+    centerLight.intensity = 1.0 + Math.sin(t * 2) * 0.2;
   });
 
   function cleanup() {
@@ -207,11 +267,17 @@ export function initEnding(container, gameState, onRestart) {
   overlay.innerHTML = '';
   const isSecret = gameState.secretCompleted;
 
-  const scene = E.createScene(0x0f0c29);
+  const scene = E.createScene(0x1a1040);
+  scene.fog = new THREE.Fog(0x1a1040, 30, 60);
   const camera = E.createCamera(50);
   camera.position.set(0, 5, 10);
   camera.lookAt(0, 2, 0);
   E.setScene(scene, camera);
+
+  // 追加ライト
+  const warm = new THREE.PointLight(0xffcc66, 1.2, 30);
+  warm.position.set(0, 8, 5);
+  scene.add(warm);
 
   // 全キャラ集合
   const hikari = E.createHikari();
@@ -234,7 +300,7 @@ export function initEnding(container, gameState, onRestart) {
   const particles = E.createParticles(100, isSecret ? 0xffd700 : 0x6688ff, 0.15);
   scene.add(particles);
 
-  // テキスト
+  // テキスト（HTMLオーバーレイ）
   const lines = isSecret ? DIALOGUES.ending.secret : DIALOGUES.ending.normal;
   const endDiv = document.createElement('div');
   endDiv.className = 'ending-overlay';
@@ -267,6 +333,7 @@ export function initEnding(container, gameState, onRestart) {
 
   let t = 0;
   E.startLoop(() => {
+    if (cleaned) return;
     t += 0.01;
     hikari.rotation.y += 0.01;
     hikari.position.y = Math.sin(t * 2) * 0.3;

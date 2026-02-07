@@ -356,17 +356,24 @@ export function createStar(size = 0.3) {
 export function createTextSprite(text, { fontSize = 48, color = '#ffffff', bg = 'transparent' } = {}) {
   const c = document.createElement('canvas');
   const ctx = c.getContext('2d');
-  c.width = 512; c.height = 128;
-  if (bg !== 'transparent') { ctx.fillStyle = bg; ctx.fillRect(0, 0, 512, 128); }
+  // テキスト幅に合わせてキャンバスサイズを動的に決定
   ctx.font = `bold ${fontSize}px sans-serif`;
+  const metrics = ctx.measureText(text);
+  const w = Math.max(256, Math.ceil(metrics.width) + 40);
+  const h = Math.max(64, fontSize + 20);
+  c.width = w; c.height = h;
+  // キャンバスリサイズ後にフォントを再設定
+  ctx.font = `bold ${fontSize}px sans-serif`;
+  if (bg !== 'transparent') { ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h); }
   ctx.fillStyle = color;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, 256, 64);
+  ctx.fillText(text, w / 2, h / 2);
   const tex = new THREE.CanvasTexture(c);
   const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
   const sprite = new THREE.Sprite(mat);
-  sprite.scale.set(4, 1, 1);
+  const aspect = w / h;
+  sprite.scale.set(aspect * 2, 2, 1);
   return sprite;
 }
 

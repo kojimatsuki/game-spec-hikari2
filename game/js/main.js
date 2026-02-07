@@ -20,8 +20,32 @@ import { resetForm } from './hikari.js';
 
 const container = document.getElementById('game-container');
 
-// 3Dエンジン初期化（キャンバス＋オーバーレイ作成）
-initEngine(container);
+// ローディング画面を消す
+function hideLoading() {
+  const el = document.getElementById('loading');
+  if (el) el.remove();
+}
+
+// エラー表示
+function showError(msg) {
+  const el = document.getElementById('loading');
+  if (el) {
+    el.textContent = 'エラー: ' + msg;
+  } else {
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px;color:red;background:#111;z-index:99999;';
+    d.textContent = 'エラー: ' + msg;
+    document.body.appendChild(d);
+  }
+}
+
+try {
+  // 3Dエンジン初期化（キャンバス＋オーバーレイ作成）
+  initEngine(container);
+} catch (e) {
+  showError('3Dエンジン初期化失敗: ' + e.message);
+  throw e;
+}
 
 const gameState = {
   worldsCompleted: [false, false, false],
@@ -94,32 +118,43 @@ function loadScene(sceneId) {
 }
 
 function loadTitle() {
-  const scene = initTitle(container, gameState, () => {
-    loadScene('worldSelect');
-  });
-  currentCleanup = scene.cleanup;
+  try {
+    const scene = initTitle(container, gameState, () => {
+      loadScene('worldSelect');
+    });
+    currentCleanup = scene.cleanup;
+  } catch (e) {
+    showError('タイトル読み込み失敗: ' + e.message);
+  }
 }
 
 function loadWorldSelect() {
-  const scene = initWorldSelect(container, gameState, (stageId) => {
-    loadScene(stageId);
-  });
-  currentCleanup = scene.cleanup;
+  try {
+    const scene = initWorldSelect(container, gameState, (stageId) => {
+      loadScene(stageId);
+    });
+    currentCleanup = scene.cleanup;
+  } catch (e) {
+    showError('ワールド選択読み込み失敗: ' + e.message);
+  }
 }
 
 function loadStage(stageId) {
   const stage = stageFlow[stageId];
   if (!stage) return;
 
-  const result = stage.init(container, gameState, () => {
-    stopBGM();
-    loadScene(stage.next);
-  });
-  currentCleanup = result.cleanup;
+  try {
+    const result = stage.init(container, gameState, () => {
+      stopBGM();
+      loadScene(stage.next);
+    });
+    currentCleanup = result.cleanup;
+  } catch (e) {
+    showError(`ステージ${stageId}読み込み失敗: ` + e.message);
+  }
 }
 
 function loadNormalEnding() {
-  // W3クリア後：ノーマルエンディングを表示し、その後ワールド選択へ戻る
   const scene = initEnding(container, gameState, () => {
     loadScene('worldSelect');
   });
@@ -127,7 +162,6 @@ function loadNormalEnding() {
 }
 
 function loadEnding() {
-  // シークレットクリア後：真のエンディング → リスタート
   const scene = initEnding(container, gameState, () => {
     gameState.worldsCompleted = [false, false, false];
     gameState.secretCompleted = false;
@@ -144,4 +178,5 @@ document.addEventListener('click', () => resumeAudio(), { once: true });
 document.addEventListener('touchstart', () => resumeAudio(), { once: true });
 
 // ゲーム開始
+hideLoading();
 loadScene('title');
