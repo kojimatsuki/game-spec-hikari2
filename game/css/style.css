@@ -1,0 +1,1127 @@
+/* style.css - 全体のスタイル・アニメーション・3D風CSS */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Hiragino Sans', 'Yu Gothic', sans-serif;
+  background: #111;
+  color: #fff;
+  overflow: hidden;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#game-container {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ===== 共通UI ===== */
+.coin-display {
+  position: fixed;
+  top: 10px;
+  right: 15px;
+  font-size: 20px;
+  background: rgba(0,0,0,0.6);
+  padding: 6px 14px;
+  border-radius: 20px;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.floating-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 22px;
+  font-weight: bold;
+  background: rgba(0,0,0,0.75);
+  padding: 12px 24px;
+  border-radius: 12px;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+  text-align: center;
+  white-space: nowrap;
+}
+.floating-message.show { opacity: 1; }
+.floating-message.hide { opacity: 0; }
+
+.big-message {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.5);
+  font-size: 32px;
+  font-weight: bold;
+  background: linear-gradient(135deg, #ff6b6b, #feca57);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  z-index: 1001;
+  opacity: 0;
+  transition: opacity 0.4s, transform 0.4s;
+  pointer-events: none;
+  text-align: center;
+  text-shadow: none;
+  filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.5));
+}
+.big-message.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.big-message.hide { opacity: 0; transform: translate(-50%, -50%) scale(1.3); }
+
+.counter-display {
+  position: absolute;
+  top: 10px;
+  left: 15px;
+  font-size: 20px;
+  background: rgba(0,0,0,0.6);
+  padding: 6px 14px;
+  border-radius: 20px;
+  z-index: 100;
+}
+
+.game-btn {
+  font-size: 20px;
+  padding: 14px 32px;
+  border: none;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  cursor: pointer;
+  font-weight: bold;
+  transition: transform 0.1s;
+  touch-action: manipulation;
+}
+.game-btn:active { transform: scale(0.95); }
+
+.stage-header {
+  position: absolute;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 18px;
+  background: rgba(0,0,0,0.5);
+  padding: 8px 20px;
+  border-radius: 10px;
+  z-index: 100;
+}
+
+.clear-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.8);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+.clear-overlay.show { opacity: 1; }
+.clear-text { font-size: 36px; font-weight: bold; margin-bottom: 30px; }
+.clear-btn { font-size: 24px; }
+
+.progress-wrap {
+  position: absolute;
+  bottom: 60px;
+  left: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 100;
+}
+.progress-label { font-size: 14px; }
+.progress-bar { width: 120px; height: 12px; background: #333; border-radius: 6px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, #f7d794, #e77f67); width: 0%; transition: width 0.3s; border-radius: 6px; }
+
+.instruction-text {
+  text-align: center;
+  font-size: 22px;
+  margin-top: 60px;
+  padding: 0 20px;
+}
+
+/* ===== タイトル画面 ===== */
+.scene-title {
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, #0f0c29, #302b63, #24243e);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 30px;
+  position: relative;
+  overflow: hidden;
+}
+.title-text {
+  font-size: clamp(20px, 5vw, 36px);
+  text-align: center;
+  padding: 0 20px;
+  background: linear-gradient(90deg, #f7d794, #e77f67, #f7d794);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: titlePulse 2s infinite;
+}
+@keyframes titlePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+.title-hikari { font-size: 72px; transition: opacity 0.3s; }
+.title-hikari.form-change { opacity: 0; transform: scale(0.5) rotate(180deg); }
+.title-brainrot {
+  position: absolute;
+  bottom: 20%;
+  right: 5%;
+  font-size: 50px;
+  opacity: 0.3;
+  animation: brainrotPeek 4s infinite;
+}
+@keyframes brainrotPeek {
+  0%, 70%, 100% { transform: translateX(100%); opacity: 0; }
+  80%, 90% { transform: translateX(0); opacity: 0.4; }
+}
+.title-poop {
+  position: absolute;
+  top: -10%;
+  font-size: 36px;
+  animation: poopFall 2s linear forwards;
+}
+@keyframes poopFall {
+  to { top: 110%; transform: rotate(720deg); }
+}
+.start-btn {
+  font-size: 28px;
+  padding: 18px 50px;
+  animation: btnBounce 1s infinite;
+}
+@keyframes btnBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+/* ===== ワールド選択 ===== */
+.scene-world-select {
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, #1a1a2e, #16213e, #0f3460);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 20px;
+}
+.select-title { font-size: 26px; }
+.world-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+  width: 100%;
+  max-width: 500px;
+}
+.world-card {
+  background: rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 20px;
+  text-align: center;
+  transition: transform 0.2s;
+  cursor: pointer;
+}
+.world-card.unlocked:active { transform: scale(0.95); }
+.world-card.locked { opacity: 0.4; cursor: default; }
+.world-card.secret { background: rgba(255,0,100,0.2); border: 2px solid #ff6b81; }
+.world-icon { font-size: 48px; margin-bottom: 8px; }
+.world-name { font-size: 18px; font-weight: bold; }
+.world-desc { font-size: 13px; opacity: 0.7; margin-top: 4px; }
+.world-clear { font-size: 14px; color: #2ecc71; margin-top: 6px; }
+.coin-info { font-size: 18px; margin-top: 10px; }
+
+/* ===== W1: うんこ3回 ===== */
+.stage-w1-poop {
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, #2d1b69, #44318d);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  position: relative;
+}
+.poop-counter { font-size: 28px; }
+.poop-btn {
+  font-size: 100px;
+  cursor: pointer;
+  transition: transform 0.1s;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+}
+.poop-btn:active { transform: scale(0.9); }
+.poop-bounce { animation: poopBounceAnim 0.3s; }
+@keyframes poopBounceAnim {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.3) rotate(10deg); }
+  100% { transform: scale(1); }
+}
+.flying-poop {
+  position: absolute;
+  animation: flyPoop 1.5s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes flyPoop {
+  0% { opacity: 1; transform: scale(0); }
+  50% { opacity: 1; transform: scale(1.2) rotate(180deg); }
+  100% { opacity: 0; transform: scale(0.5) rotate(360deg) translateY(-50px); }
+}
+.evolve-flash { animation: flashAnim 0.5s; }
+@keyframes flashAnim {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(3); }
+}
+.roblox-transition { position: absolute; inset: 0; pointer-events: none; }
+.roblox-block {
+  position: absolute;
+  width: 30px; height: 30px;
+  background: linear-gradient(135deg, #a29bfe, #6c5ce7);
+  animation: blockFall 1s ease-in forwards;
+}
+@keyframes blockFall {
+  0% { opacity: 0; transform: scale(0) rotate(0); }
+  50% { opacity: 1; transform: scale(1.5) rotate(180deg); }
+  100% { opacity: 0; transform: scale(0.5) rotate(360deg) translateY(200px); }
+}
+
+/* ===== W1: トイレ食べ 3D ===== */
+.stage-w1-toilet {
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, #0c0032, #190061);
+  position: relative;
+}
+.scene-3d {
+  width: 100%; height: 100%;
+  perspective: 600px;
+  position: relative;
+  overflow: hidden;
+}
+.floor-3d {
+  position: absolute;
+  bottom: 0; left: -10%; right: -10%;
+  height: 70%;
+  background: linear-gradient(180deg, rgba(100,100,255,0.1), rgba(100,100,255,0.3));
+  transform: rotateX(55deg);
+  transform-origin: bottom center;
+}
+.grid-line-h, .grid-line-v {
+  position: absolute;
+  background: rgba(100,150,255,0.3);
+}
+.grid-line-h { left: 0; right: 0; height: 1px; }
+.grid-line-v { top: 0; bottom: 0; width: 1px; }
+.player-3d {
+  position: absolute;
+  font-size: 40px;
+  transition: left 0.2s, top 0.2s;
+  z-index: 50;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+}
+.toilet-3d {
+  position: absolute;
+  font-size: 36px;
+  cursor: pointer;
+  transition: transform 0.3s, opacity 0.3s;
+}
+.toilet-3d.eaten { opacity: 0; transform: scale(0) !important; }
+.brainrot-3d {
+  position: absolute;
+  font-size: 60px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  filter: drop-shadow(0 0 20px purple);
+}
+.br-brain { font-size: 40px; }
+.br-body { font-size: 70px; }
+.eat-flash { animation: eatFlash 0.5s infinite; }
+@keyframes eatFlash { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(3); } }
+
+/* ===== W1: お腹の中 ===== */
+.stage-w1-belly {
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, #c44569, #6c5ce7, #a55eea);
+  position: relative;
+}
+.belly-space {
+  width: 100%; height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+.belly-bubble {
+  position: absolute;
+  width: 20px; height: 20px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 50%;
+  animation: bubbleFloat 3s ease-in-out infinite;
+}
+@keyframes bubbleFloat {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.3; }
+  50% { transform: translateY(-30px) scale(1.3); opacity: 0.6; }
+}
+.belly-coin {
+  position: absolute;
+  font-size: 24px;
+  cursor: pointer;
+  animation: coinFloat 2s ease-in-out infinite;
+  transition: opacity 0.3s, transform 0.3s;
+}
+.belly-coin.collected { opacity: 0; transform: scale(2) !important; }
+@keyframes coinFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.belly-knife {
+  position: absolute;
+  font-size: 30px;
+  cursor: pointer;
+  opacity: 0.6;
+  animation: knifePulse 1.5s ease-in-out infinite;
+  transition: opacity 0.3s;
+}
+.belly-knife:hover, .belly-knife:active { opacity: 1; }
+.belly-knife.collected { opacity: 0; transform: scale(2); }
+@keyframes knifePulse {
+  0%, 100% { transform: scale(1) rotate(-10deg); }
+  50% { transform: scale(1.1) rotate(10deg); }
+}
+.belly-acid {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 0%;
+  background: linear-gradient(0deg, rgba(0,255,0,0.5), rgba(0,255,0,0.1));
+  transition: height 0.5s;
+  pointer-events: none;
+  z-index: 50;
+}
+.shake { animation: shakeAnim 0.2s; }
+@keyframes shakeAnim {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+.white-flash {
+  position: absolute;
+  inset: 0;
+  background: white;
+  animation: whiteFlash 1.5s forwards;
+  z-index: 999;
+  pointer-events: none;
+}
+@keyframes whiteFlash {
+  0% { opacity: 0; }
+  30% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.pulse-btn { animation: pulseBtnAnim 0.5s infinite; }
+@keyframes pulseBtnAnim { 0%, 100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.1); } }
+
+/* ===== W1: バイク脱出 ===== */
+.stage-w1-escape {
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, #2c003e, #512b58, #2c003e);
+  position: relative;
+  overflow: hidden;
+}
+.escape-bg {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent, transparent 100px, rgba(255,255,255,0.03) 100px, rgba(255,255,255,0.03) 101px);
+}
+.escape-road {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 30%;
+  background: repeating-linear-gradient(90deg, #333 0px, #333 40px, #444 40px, #444 80px);
+  border-top: 3px dashed #ff0;
+}
+.bike-player {
+  position: absolute;
+  font-size: 40px;
+  left: 20%;
+  transition: top 0.15s;
+  z-index: 50;
+  filter: drop-shadow(0 2px 8px rgba(255,100,0,0.5));
+}
+.brainrot-chaser {
+  position: absolute;
+  font-size: 60px;
+  transition: font-size 0.5s;
+  z-index: 40;
+  filter: drop-shadow(0 0 15px purple);
+}
+.brainrot-chaser.dying { animation: dyingShake 0.5s infinite; }
+@keyframes dyingShake {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-15deg); }
+  75% { transform: rotate(15deg); }
+}
+.brainrot-chaser.exploding { animation: explodeGrow 1s forwards; }
+@keyframes explodeGrow { to { transform: scale(3); opacity: 0; } }
+.obstacle {
+  position: absolute;
+  font-size: 30px;
+  z-index: 30;
+}
+.dist-display {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 18px;
+  background: rgba(0,0,0,0.6);
+  padding: 6px 16px;
+  border-radius: 20px;
+  z-index: 100;
+}
+.form-display {
+  position: absolute;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 14px;
+  background: rgba(100,0,100,0.6);
+  padding: 4px 12px;
+  border-radius: 10px;
+  z-index: 100;
+}
+
+/* ===== W2: 学校 ===== */
+.stage-w2-school {
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, #87ceeb, #98d8c8, #f7dc6f);
+  position: relative;
+}
+.school-scene {
+  width: 100%; height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 20px;
+}
+.school-building { text-align: center; }
+.building-emoji { font-size: 80px; }
+.building-label { font-size: 18px; margin-top: 8px; font-weight: bold; color: #333; }
+.item-pickup {
+  font-size: 60px;
+  cursor: pointer;
+  animation: pickupBounce 1s infinite;
+  position: absolute;
+  top: 35%;
+  right: 20%;
+}
+.item-pickup.collected { animation: collected 0.3s forwards; }
+@keyframes pickupBounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes collected { to { opacity: 0; transform: scale(2); } }
+.hikari-standing { font-size: 60px; }
+.action-btn { margin-top: 15px; }
+.walking-scene { text-align: center; }
+.walk-emoji { font-size: 50px; animation: walkAnim 0.5s infinite; }
+@keyframes walkAnim { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(10px); } }
+.walk-text { font-size: 18px; color: #333; margin-top: 10px; }
+.friend-npc {
+  position: absolute;
+  font-size: 50px;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.friend-npc:active { transform: scale(1.2); }
+.friend-npc.friend-joined { animation: friendJoinAnim 0.8s forwards; }
+@keyframes friendJoinAnim { to { transform: scale(1.5); opacity: 0; } }
+.friend-name {
+  font-size: 12px;
+  text-align: center;
+  color: #333;
+  font-weight: bold;
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* ===== W2: お化け ===== */
+.stage-w2-ghost {
+  width: 100%; height: 100%;
+  background: #0a0a0a;
+  position: relative;
+  overflow: hidden;
+}
+.dark-school { position: absolute; inset: 0; }
+.school-window {
+  position: absolute;
+  width: 30px; height: 30px;
+  background: rgba(255,255,100,0.3);
+  border-radius: 2px;
+  animation: windowFlicker 3s infinite;
+}
+@keyframes windowFlicker {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 0.6; }
+}
+.moon { position: absolute; top: 5%; right: 10%; font-size: 50px; }
+.ghost-player {
+  position: absolute;
+  font-size: 40px;
+  transition: left 0.1s, top 0.1s;
+  z-index: 50;
+  filter: drop-shadow(0 0 10px rgba(255,255,255,0.5));
+}
+.ghost-enemy {
+  position: absolute;
+  font-size: 36px;
+  cursor: pointer;
+  animation: ghostFloat 2s ease-in-out infinite;
+  z-index: 40;
+}
+.ghost-enemy:nth-child(even) { animation-duration: 2.5s; }
+@keyframes ghostFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.ghost-defeated { animation: ghostDefeat 0.5s forwards !important; }
+@keyframes ghostDefeat {
+  to { transform: scale(0) rotate(360deg); opacity: 0; }
+}
+.cheer-text {
+  position: absolute;
+  bottom: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 18px;
+  color: #ffd700;
+  animation: cheerPulse 1s infinite;
+  z-index: 100;
+}
+@keyframes cheerPulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+/* ===== W2: フライト ===== */
+.stage-w2-flying {
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, #74b9ff, #a29bfe, #81ecec);
+  position: relative;
+  overflow: hidden;
+}
+.sky-bg { position: absolute; inset: 0; }
+.cloud {
+  position: absolute;
+  pointer-events: none;
+}
+.fly-player {
+  position: absolute;
+  font-size: 36px;
+  z-index: 50;
+  transition: top 0.05s, transform 0.1s;
+}
+.fly-obstacle {
+  position: absolute;
+  font-size: 32px;
+  z-index: 30;
+}
+.ground-enemy {
+  position: absolute;
+  bottom: 5%;
+  font-size: 28px;
+  z-index: 20;
+}
+.dropped-poop {
+  position: absolute;
+  font-size: 24px;
+  z-index: 45;
+  pointer-events: none;
+}
+.score-display {
+  position: absolute;
+  top: 50px;
+  right: 15px;
+  font-size: 16px;
+  background: rgba(0,0,0,0.5);
+  padding: 4px 12px;
+  border-radius: 10px;
+  z-index: 100;
+}
+
+/* ===== W3: 人形＆光 ===== */
+.stage-w3-dolls {
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, #1a0a2e, #2d1b69, #44318d);
+  position: relative;
+  transition: filter 0.5s;
+}
+.dolls-field { width: 100%; height: 100%; position: relative; }
+.doll-item {
+  position: absolute;
+  font-size: 36px;
+  cursor: pointer;
+  animation: dollBob 2s ease-in-out infinite;
+}
+.doll-item:nth-child(even) { animation-duration: 2.5s; }
+.doll-item.eaten { animation: eatAnim 0.3s forwards !important; }
+@keyframes dollBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes eatAnim { to { transform: scale(0) rotate(180deg); opacity: 0; } }
+.light-orb {
+  position: absolute;
+  font-size: 24px;
+  cursor: pointer;
+  animation: orbGlow 1.5s ease-in-out infinite;
+}
+@keyframes orbGlow {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.3); filter: brightness(1.5); }
+}
+.light-orb.collected { animation: collectAnim 0.3s forwards !important; }
+@keyframes collectAnim { to { transform: scale(2); opacity: 0; } }
+
+.magic-awaken-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(255,215,0,0.3), transparent);
+  z-index: 500;
+  pointer-events: none;
+}
+.magic-spark {
+  position: absolute;
+  font-size: 24px;
+  animation: sparkle 1.5s ease-out forwards;
+}
+@keyframes sparkle {
+  0% { opacity: 0; transform: scale(0); }
+  50% { opacity: 1; transform: scale(1.5); }
+  100% { opacity: 0; transform: scale(0.5) translateY(-30px); }
+}
+
+/* ===== W3: 魔法使い ===== */
+.stage-w3-magic {
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, #2d1b69, #6c5ce7, #a55eea);
+  position: relative;
+}
+.magic-scene {
+  width: 100%; height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  padding: 20px;
+  position: relative;
+}
+.hikari-big { font-size: 80px; transition: transform 0.3s; }
+.hikari-big.transforming { animation: transformAnim 0.8s; }
+@keyframes transformAnim {
+  0% { transform: scale(1) rotate(0); }
+  50% { transform: scale(0.3) rotate(180deg); filter: brightness(3); }
+  100% { transform: scale(1) rotate(360deg); }
+}
+.magic-title { font-size: 22px; font-weight: bold; }
+.transform-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: 100%;
+  max-width: 400px;
+}
+.transform-btn {
+  background: rgba(255,255,255,0.15);
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 12px;
+  padding: 10px;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.2s;
+}
+.transform-btn:active { background: rgba(255,255,255,0.3); }
+.tf-emoji { font-size: 32px; }
+.tf-name { font-size: 11px; }
+.tf-cost { font-size: 12px; color: #ffd700; }
+.mom-btn { background: linear-gradient(135deg, #e17055, #d63031); }
+.next-btn { background: linear-gradient(135deg, #00b894, #00cec9); }
+
+.mom-scene, .cat-transform-scene {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.mom-char { font-size: 80px; }
+.speech-bubble {
+  background: white;
+  color: #333;
+  padding: 12px 20px;
+  border-radius: 16px;
+  font-size: 18px;
+  position: relative;
+  max-width: 80%;
+}
+.speech-bubble::after {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  border: 10px solid transparent;
+  border-bottom-color: white;
+  transform: translateX(-50%);
+}
+.big-cat { font-size: 100px; animation: catBounce 0.5s infinite; }
+@keyframes catBounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+.secret-text { font-size: 14px; opacity: 0.7; font-style: italic; }
+
+.coin-collect-area {
+  width: 100%; height: 70%;
+  position: relative;
+}
+.scatter-coin {
+  position: absolute;
+  font-size: 28px;
+  cursor: pointer;
+  animation: coinFloat 2s ease-in-out infinite;
+}
+.scatter-coin.collected { animation: collectAnim 0.3s forwards !important; }
+
+/* ===== W3: テレビ ===== */
+.stage-w3-tv {
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, #2d3436, #636e72);
+  position: relative;
+}
+.tv-suck-scene {
+  width: 100%; height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+.big-tv { font-size: 120px; }
+.hikari-sucked {
+  font-size: 50px;
+  transition: transform 1s, opacity 1s;
+}
+.hikari-sucked.sucking {
+  transform: scale(0) rotate(720deg);
+  opacity: 0;
+}
+.news-scene {
+  width: 100%; height: 100%;
+  position: relative;
+  background: linear-gradient(180deg, #2c3e50, #34495e);
+}
+.news-bar {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: #c0392b;
+  color: white;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: bold;
+  z-index: 100;
+  animation: newsScroll 15s linear infinite;
+  white-space: nowrap;
+}
+@keyframes newsScroll { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+.studio {
+  width: 100%; height: calc(100% - 40px);
+  position: relative;
+}
+.caster-hikari {
+  position: absolute;
+  bottom: 15%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 60px;
+}
+.studio-item {
+  position: absolute;
+  font-size: 40px;
+  cursor: pointer;
+  transition: transform 0.2s;
+  animation: itemGlow 2s infinite;
+}
+.studio-item:active { transform: scale(1.3); }
+.studio-item.investigated {
+  opacity: 0.3;
+  pointer-events: none;
+  filter: grayscale(1);
+}
+@keyframes itemGlow {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.3); }
+}
+.clue-area {
+  position: absolute;
+  top: 10px;
+  left: 15px;
+  font-size: 16px;
+  background: rgba(0,0,0,0.6);
+  padding: 8px 14px;
+  border-radius: 10px;
+  z-index: 100;
+}
+.timer-display {
+  position: absolute;
+  top: 10px;
+  right: 80px;
+  font-size: 20px;
+  font-weight: bold;
+  background: rgba(0,0,0,0.6);
+  padding: 6px 14px;
+  border-radius: 20px;
+  z-index: 100;
+}
+.timer-urgent { color: #e74c3c; animation: timerPulse 0.5s infinite; }
+@keyframes timerPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+
+.password-area {
+  position: absolute;
+  bottom: 15%;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 200;
+  background: rgba(0,0,0,0.8);
+  padding: 20px;
+  border-radius: 16px;
+}
+.password-label { font-size: 20px; margin-bottom: 12px; }
+.password-input-wrap { display: flex; gap: 8px; justify-content: center; margin-bottom: 15px; }
+.password-digit {
+  width: 50px; height: 60px;
+  font-size: 28px;
+  text-align: center;
+  border: 2px solid #fff;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.1);
+  color: white;
+  outline: none;
+}
+.password-digit:focus { border-color: #ffd700; }
+.submit-btn { background: linear-gradient(135deg, #e74c3c, #c0392b); }
+
+.result-scene {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 20px;
+}
+.tv-break { font-size: 100px; animation: tvBreakAnim 1s; }
+@keyframes tvBreakAnim {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.5) rotate(10deg); }
+  100% { transform: scale(1); }
+}
+.hikari-free { font-size: 80px; animation: freeFloat 1s infinite; }
+@keyframes freeFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+.news-end { font-size: 80px; }
+.fail-text { font-size: 16px; opacity: 0.7; text-align: center; }
+
+/* ===== 隠しステージ ===== */
+.stage-secret {
+  width: 100%; height: 100%;
+  background: #000;
+  position: relative;
+  overflow: hidden;
+  transition: background-color 0.3s;
+}
+.combo-display {
+  position: absolute;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 22px;
+  font-weight: bold;
+  color: #ff6b6b;
+  z-index: 100;
+}
+.combo-flash { animation: comboFlash 0.3s; }
+@keyframes comboFlash { 50% { transform: translateX(-50%) scale(1.5); color: #ffd700; } }
+.secret-progress {
+  position: absolute;
+  top: 10px;
+  left: 15px;
+  font-size: 18px;
+  z-index: 100;
+}
+.secret-ghost {
+  position: absolute;
+  cursor: pointer;
+  z-index: 50;
+  transition: font-size 0.2s;
+}
+.secret-ghost:active { filter: brightness(2); }
+.ghost-popped { animation: ghostPop 0.3s forwards !important; pointer-events: none; }
+@keyframes ghostPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.5); filter: brightness(3); }
+  100% { transform: scale(0); opacity: 0; }
+}
+
+.boss-ghost {
+  position: absolute;
+  font-size: 150px;
+  cursor: pointer;
+  z-index: 60;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+.boss-body { font-size: inherit; }
+.boss-eyes {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 40px;
+  transition: transform 0.1s;
+}
+.boss-hit { filter: brightness(3) !important; }
+.boss-exploding {
+  animation: bossExplode 2s forwards;
+}
+@keyframes bossExplode {
+  0% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(2); filter: brightness(5); }
+  100% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+}
+.boss-hp-bar {
+  position: absolute;
+  bottom: 10%;
+  left: 10%;
+  right: 10%;
+  height: 20px;
+  background: #333;
+  border-radius: 10px;
+  overflow: hidden;
+  z-index: 100;
+}
+.boss-hp-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #e74c3c, #f39c12);
+  transition: width 0.1s;
+  border-radius: 10px;
+}
+
+.mega-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 999;
+  pointer-events: none;
+  animation: megaFlashAnim 3s forwards;
+}
+@keyframes megaFlashAnim {
+  0% { background: transparent; }
+  20% { background: white; }
+  50% { background: white; }
+  100% { background: transparent; }
+}
+.victory-particle {
+  position: absolute;
+  font-size: 30px;
+  z-index: 1000;
+  animation: particleFly 2s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes particleFly {
+  0% { transform: scale(0); opacity: 0; }
+  30% { transform: scale(1.5); opacity: 1; }
+  100% { transform: scale(0.5) translateY(-100px); opacity: 0; }
+}
+.legend-title {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 32px;
+  font-weight: bold;
+  color: #ffd700;
+  z-index: 1001;
+  text-shadow: 0 0 20px #ffd700;
+  animation: legendPulse 1s infinite;
+  white-space: nowrap;
+}
+@keyframes legendPulse {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.1); }
+}
+
+/* ===== エンディング ===== */
+.scene-ending {
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, #0f0c29, #302b63, #24243e);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 20px;
+  overflow-y: auto;
+}
+.ending-title {
+  font-size: 28px;
+  background: linear-gradient(90deg, #ffd700, #ff6b6b);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.ending-digest { text-align: center; }
+.all-chars { font-size: 36px; margin-bottom: 15px; letter-spacing: 8px; }
+.ending-line {
+  font-size: 18px;
+  margin: 10px 0;
+  opacity: 0;
+  animation: fadeInLine 1s forwards;
+}
+@keyframes fadeInLine { to { opacity: 1; } }
+.credits {
+  text-align: center;
+  font-size: 14px;
+  opacity: 0.7;
+  animation: creditsScroll 10s linear;
+}
+.credits p { margin: 8px 0; }
+@keyframes creditsScroll {
+  0% { transform: translateY(100px); opacity: 0; }
+  20% { opacity: 0.7; }
+  100% { transform: translateY(0); }
+}
+.restart-btn {
+  opacity: 0;
+  animation: fadeIn 1s forwards;
+}
+@keyframes fadeIn { to { opacity: 1; } }
+
+/* ===== レスポンシブ ===== */
+@media (max-width: 600px) {
+  .title-text { font-size: 20px; }
+  .title-hikari { font-size: 56px; }
+  .big-message { font-size: 24px; }
+  .world-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .world-icon { font-size: 36px; }
+  .transform-grid { grid-template-columns: repeat(3, 1fr); }
+  .boss-ghost { font-size: 100px; }
+  .password-digit { width: 40px; height: 50px; font-size: 24px; }
+}
+
+@media (min-width: 601px) and (max-width: 1024px) {
+  .title-text { font-size: 28px; }
+}
