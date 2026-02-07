@@ -1,179 +1,219 @@
-// w1-toilet.js - W1ステージ2: トイレ食べ（3D風）
+// w1-toilet.js - W1ステージ2: トイレ食べ（3Dポリゴン版）
+// ひかりちゃんがフィールドを歩いてトイレを食べるステージ
 
 import { DIALOGUES } from './data.js';
 import { playSound, startBGM, stopBGM } from './audio.js';
 import { addCoins } from './economy.js';
-import { showMessage, showBigMessage, initCoinUI } from './ui.js';
-import { getEmoji } from './hikari.js';
+import { showMessage, showBigMessage } from './ui.js';
+import * as E from './engine3d.js';
+const THREE = E.THREE;
 
 export function initW1Toilet(container, gameState, onComplete) {
   const d = DIALOGUES.w1;
   let toiletsEaten = 0;
   const TARGET = 10;
   let cleaned = false;
-  let animId = null;
-  let playerX = 50, playerZ = 50;
+  let t = 0;
 
-  const wrap = document.createElement('div');
-  wrap.className = 'stage-w1-toilet';
+  // ひかりちゃんの移動先
+  let targetPos = new THREE.Vector3(0, 0, 0);
 
-  // 3Dシーン
-  const scene = document.createElement('div');
-  scene.className = 'scene-3d';
+  // === シーン作成 ===
+  const scene = E.createScene(0x222244);
+  scene.fog = new THREE.Fog(0x222244, 20, 60);
+  const camera = E.createCamera(60);
+  camera.position.set(0, 18, 18);
+  camera.lookAt(0, 0, 0);
+  E.setScene(scene, camera);
 
-  const floor = document.createElement('div');
-  floor.className = 'floor-3d';
-  scene.appendChild(floor);
+  // グリッド床
+  const ground = E.createGridGround(40, 0x3366cc, 0x2255aa);
+  scene.add(ground);
 
-  // グリッド線
-  for (let i = 0; i <= 10; i++) {
-    const lineH = document.createElement('div');
-    lineH.className = 'grid-line-h';
-    lineH.style.top = (i * 10) + '%';
-    floor.appendChild(lineH);
-    const lineV = document.createElement('div');
-    lineV.className = 'grid-line-v';
-    lineV.style.left = (i * 10) + '%';
-    floor.appendChild(lineV);
-  }
+  // === ひかりちゃん ===
+  const hikari = E.createHikari();
+  hikari.position.set(0, 0, 0);
+  scene.add(hikari);
 
-  // プレイヤー
-  const player = document.createElement('div');
-  player.className = 'player-3d';
-  player.textContent = getEmoji();
-  scene.appendChild(player);
-
-  // トイレ配置
+  // === トイレ配置（15個） ===
   const toilets = [];
   for (let i = 0; i < 15; i++) {
-    const t = document.createElement('div');
-    t.className = 'toilet-3d';
-    t.textContent = '🚽';
-    t.dataset.x = 10 + Math.random() * 80;
-    t.dataset.z = 10 + Math.random() * 80;
-    t.dataset.eaten = 'false';
-    scene.appendChild(t);
-    toilets.push(t);
+    const toilet = E.createToilet();
+    const angle = (i / 15) * Math.PI * 2 + Math.random() * 0.5;
+    const radius = 5 + Math.random() * 10;
+    toilet.position.set(
+      Math.cos(angle) * radius,
+      0,
+      Math.sin(angle) * radius
+    );
+    toilet.rotation.y = Math.random() * Math.PI * 2;
+    toilet.userData.eaten = false;
+    toilet.userData.bobOffset = Math.random() * Math.PI * 2;
+    scene.add(toilet);
+    toilets.push(toilet);
   }
 
-  wrap.appendChild(scene);
+  // === 地面クリックで移動 ===
+  // 地面のヒット検出用平面（透明）
+  const clickPlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(40, 40),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  clickPlane.rotation.x = -Math.PI / 2;
+  clickPlane.position.y = 0.01;
+  scene.add(clickPlane);
 
-  // UI
-  const counter = document.createElement('div');
-  counter.className = 'counter-display';
-  counter.textContent = `🚽 ${toiletsEaten}/${TARGET}`;
-  wrap.appendChild(counter);
-
-  initCoinUI(wrap);
-  showMessage(wrap, d.toiletIntro, 3000);
-  startBGM('w1');
-
-  container.appendChild(wrap);
-
-  // 移動ハンドラ
-  function handleMove(e) {
+  E.registerClick(clickPlane, (hit) => {
     if (cleaned) return;
-    e.preventDefault();
-    const rect = scene.getBoundingClientRect();
-    const cx = (e.touches ? e.touches[0].clientX : e.clientX);
-    const cy = (e.touches ? e.touches[0].clientY : e.clientY);
-    playerX = ((cx - rect.left) / rect.width) * 100;
-    playerZ = ((cy - rect.top) / rect.height) * 100;
-    playerX = Math.max(5, Math.min(95, playerX));
-    playerZ = Math.max(5, Math.min(95, playerZ));
-  }
+    targetPos.copy(hit.point);
+    targetPos.y = 0;
+    playSound('tap');
+  });
 
-  scene.addEventListener('click', handleMove);
-  scene.addEventListener('touchstart', handleMove, { passive: false });
+  // === UI（オーバーレイ）===
+  const overlay = E.getOverlay();
+  overlay.innerHTML = '';
 
-  function update3DPositions() {
-    // プレイヤー位置更新（3D遠近感）
-    const scale = 0.4 + (playerZ / 100) * 1.0;
-    player.style.left = playerX + '%';
-    player.style.top = playerZ + '%';
-    player.style.transform = `translate(-50%, -50%) scale(${scale})`;
-    player.style.zIndex = Math.floor(playerZ);
+  // カウンター表示
+  const counterEl = document.createElement('div');
+  counterEl.style.cssText = 'position:absolute;top:20px;left:50%;transform:translateX(-50%);font-size:28px;color:#fff;text-shadow:2px 2px 4px #000;z-index:10;';
+  counterEl.textContent = `🚽 0/${TARGET}`;
+  overlay.appendChild(counterEl);
 
-    // トイレ位置更新＆当たり判定
-    toilets.forEach(t => {
-      if (t.dataset.eaten === 'true') return;
-      const tx = parseFloat(t.dataset.x);
-      const tz = parseFloat(t.dataset.z);
-      const ts = 0.4 + (tz / 100) * 1.0;
-      t.style.left = tx + '%';
-      t.style.top = tz + '%';
-      t.style.transform = `translate(-50%, -50%) scale(${ts})`;
-      t.style.zIndex = Math.floor(tz);
+  // BGM開始
+  startBGM('w1');
+  showMessage(overlay, d.toiletIntro, 3000);
 
-      // 当たり判定
-      const dist = Math.hypot(playerX - tx, playerZ - tz);
-      if (dist < 8) {
-        eatToilet(t);
-      }
-    });
-  }
-
-  function eatToilet(t) {
-    if (t.dataset.eaten === 'true' || cleaned) return;
-    t.dataset.eaten = 'true';
-    t.classList.add('eaten');
+  // === トイレを食べる処理 ===
+  function eatToilet(toilet) {
+    if (toilet.userData.eaten || cleaned) return;
+    toilet.userData.eaten = true;
     toiletsEaten++;
-    counter.textContent = `🚽 ${toiletsEaten}/${TARGET}`;
+    counterEl.textContent = `🚽 ${toiletsEaten}/${TARGET}`;
     playSound('eat');
-    showMessage(wrap, 'モグモグ🚽', 800);
     addCoins(2);
-    setTimeout(() => { if (t.parentNode) t.parentNode.removeChild(t); }, 500);
+    showMessage(overlay, 'モグモグ🚽', 800);
+
+    // 食べるアニメ（縮小して消える）
+    toilet.userData.shrinking = true;
+    toilet.userData.shrinkTime = t;
 
     if (toiletsEaten >= TARGET) {
-      brainrotAppear();
+      setTimeout(() => brainrotAppear(), 1000);
     }
   }
 
+  // === ブレインロット登場 ===
   function brainrotAppear() {
     if (cleaned) return;
     stopBGM();
     playSound('brainrot');
-    showBigMessage(wrap, d.brainrotAppear, 2000);
+    showBigMessage(overlay, d.brainrotAppear, 2000);
 
-    const monster = document.createElement('div');
-    monster.className = 'brainrot-3d';
-    monster.innerHTML = '<span class="br-brain">🧠</span><span class="br-body">👾</span>';
-    scene.appendChild(monster);
+    // ブレインロット生成（遠くから近づく）
+    const brainrot = E.createBrainrot(0);
+    brainrot.position.set(0, 0, -25);
+    brainrot.userData.approaching = true;
+    scene.add(brainrot);
 
-    // 迫ってくるアニメーション
-    let mz = 0;
-    const approach = setInterval(() => {
-      if (cleaned) { clearInterval(approach); return; }
-      mz += 2;
-      const ms = 0.5 + (mz / 100) * 2.0;
-      monster.style.left = '50%';
-      monster.style.top = mz + '%';
-      monster.style.transform = `translate(-50%, -50%) scale(${ms})`;
-      if (mz >= 80) {
-        clearInterval(approach);
-        showBigMessage(wrap, d.brainrotEat, 2000);
-        playSound('explode');
-        monster.classList.add('eat-flash');
-        setTimeout(() => {
-          if (!cleaned) onComplete();
-        }, 2500);
-      }
-    }, 50);
+    // 近づくアニメーション（ループ内で処理）
+    brainrot.userData.approachStart = t;
   }
 
-  function gameLoop() {
+  // === メインループ ===
+  E.startLoop(() => {
     if (cleaned) return;
-    update3DPositions();
-    animId = requestAnimationFrame(gameLoop);
-  }
-  animId = requestAnimationFrame(gameLoop);
+    t += 0.016;
 
-  return {
-    cleanup() {
-      cleaned = true;
-      stopBGM();
-      if (animId) cancelAnimationFrame(animId);
-      if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+    // ひかりちゃんの移動（ターゲットに向かって歩く）
+    const dx = targetPos.x - hikari.position.x;
+    const dz = targetPos.z - hikari.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist > 0.2) {
+      const speed = 0.12;
+      hikari.position.x += (dx / dist) * speed;
+      hikari.position.z += (dz / dist) * speed;
+      // 向き変更
+      hikari.rotation.y = Math.atan2(dx, dz);
+      // 歩行アニメ（上下揺れ）
+      hikari.position.y = Math.abs(Math.sin(t * 10)) * 0.15;
+    } else {
+      hikari.position.y = 0;
     }
-  };
+
+    // トイレとの当たり判定＆アニメーション
+    toilets.forEach(toilet => {
+      if (toilet.userData.eaten) {
+        // 縮小アニメ
+        if (toilet.userData.shrinking) {
+          const elapsed = t - toilet.userData.shrinkTime;
+          const s = Math.max(0, 1 - elapsed * 3);
+          toilet.scale.setScalar(s);
+          toilet.position.y = elapsed * 3;
+          toilet.rotation.y += 0.2;
+          if (s <= 0) {
+            scene.remove(toilet);
+            toilet.userData.shrinking = false;
+          }
+        }
+        return;
+      }
+
+      // 軽い浮遊
+      toilet.position.y = Math.sin(t * 1.5 + toilet.userData.bobOffset) * 0.1;
+
+      // 距離チェック
+      const tdx = hikari.position.x - toilet.position.x;
+      const tdz = hikari.position.z - toilet.position.z;
+      const tdist = Math.sqrt(tdx * tdx + tdz * tdz);
+      if (tdist < 1.5) {
+        eatToilet(toilet);
+      }
+    });
+
+    // ブレインロットの接近アニメーション
+    scene.traverse((obj) => {
+      if (obj.userData && obj.userData.approaching) {
+        const elapsed = t - obj.userData.approachStart;
+        // ゆっくり近づく
+        obj.position.z += 0.15;
+        obj.position.y = Math.sin(t * 3) * 0.3;
+        obj.rotation.y = Math.sin(t * 2) * 0.3;
+
+        // ひかりちゃんに到達
+        if (obj.position.z >= hikari.position.z) {
+          obj.userData.approaching = false;
+          showBigMessage(overlay, d.brainrotEat, 2000);
+          playSound('explode');
+
+          // 白フラッシュ
+          scene.background = new THREE.Color(0xffffff);
+          setTimeout(() => {
+            scene.background = new THREE.Color(0x222244);
+          }, 300);
+
+          setTimeout(() => {
+            if (!cleaned) onComplete();
+          }, 2500);
+        }
+      }
+    });
+
+    // カメラ追従（軽く追いかける）
+    camera.position.x += (hikari.position.x - camera.position.x) * 0.02;
+    camera.position.z = hikari.position.z + 18;
+    camera.lookAt(hikari.position.x, 0, hikari.position.z);
+  });
+
+  // === クリーンアップ ===
+  function cleanup() {
+    cleaned = true;
+    stopBGM();
+    E.stopLoop();
+    E.clearClicks();
+    E.disposeScene(scene);
+    overlay.innerHTML = '';
+  }
+
+  return { cleanup };
 }

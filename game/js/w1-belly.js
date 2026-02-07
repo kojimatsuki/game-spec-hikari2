@@ -1,183 +1,309 @@
-// w1-belly.js - W1ステージ3: お腹の中（コイン＆包丁集め）
+// w1-belly.js - W1ステージ3: お腹の中（3Dポリゴン版）
+// コインと包丁を集め、消化液から逃げて脱出するステージ
 
 import { DIALOGUES } from './data.js';
 import { playSound, startBGM, stopBGM } from './audio.js';
 import { addCoins } from './economy.js';
-import { showMessage, showBigMessage, createCounter, createButton, initCoinUI, createProgressBar } from './ui.js';
+import { showMessage, showBigMessage } from './ui.js';
+import * as E from './engine3d.js';
+const THREE = E.THREE;
 
 export function initW1Belly(container, gameState, onComplete) {
   const d = DIALOGUES.w1;
   let knives = 0;
   const KNIFE_TARGET = 6;
   let cleaned = false;
-  let animId = null;
-  let acidLevel = 100;
-  let acidSpeed = 0.03;
+  let t = 0;
+  let acidY = -5; // 消化液の高さ（下から上昇）
+  let acidSpeed = 0.005;
+  let cutCount = 0;
 
-  const wrap = document.createElement('div');
-  wrap.className = 'stage-w1-belly';
+  // === シーン作成（ピンク/紫の体内空間） ===
+  const scene = E.createScene(0x330022);
+  scene.fog = new THREE.Fog(0x330022, 10, 40);
+  const camera = E.createCamera(65);
+  camera.position.set(0, 8, 14);
+  camera.lookAt(0, 4, 0);
+  E.setScene(scene, camera);
 
-  // 体内空間
-  const belly = document.createElement('div');
-  belly.className = 'belly-space';
+  // 追加ライト（暖かみのあるピンクライト）
+  const pinkLight = new THREE.PointLight(0xff66aa, 1.2, 30);
+  pinkLight.position.set(0, 10, 0);
+  scene.add(pinkLight);
+  const greenLight = new THREE.PointLight(0x44ff44, 0.5, 20);
+  greenLight.position.set(0, -3, 0);
+  scene.add(greenLight);
 
-  // 泡演出
-  for (let i = 0; i < 15; i++) {
-    const bubble = document.createElement('div');
-    bubble.className = 'belly-bubble';
-    bubble.style.left = Math.random() * 90 + 5 + '%';
-    bubble.style.bottom = Math.random() * 80 + '%';
-    bubble.style.animationDelay = Math.random() * 3 + 's';
-    bubble.style.animationDuration = (2 + Math.random() * 3) + 's';
-    belly.appendChild(bubble);
-  }
+  // === 体内の壁（ボックスで囲む） ===
+  const wallMat = new THREE.MeshLambertMaterial({ color: 0x993366 });
+  const wallThickness = 1;
+  const roomSize = 16;
+  const roomHeight = 14;
 
-  // コイン配置
+  // 床
+  const floor = new THREE.Mesh(
+    new THREE.BoxGeometry(roomSize, wallThickness, roomSize),
+    new THREE.MeshLambertMaterial({ color: 0x660033 })
+  );
+  floor.position.y = -0.5;
+  scene.add(floor);
+
+  // 左壁
+  const leftWall = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, roomHeight, roomSize), wallMat);
+  leftWall.position.set(-roomSize / 2, roomHeight / 2, 0);
+  scene.add(leftWall);
+  // 右壁
+  const rightWall = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, roomHeight, roomSize), wallMat);
+  rightWall.position.set(roomSize / 2, roomHeight / 2, 0);
+  scene.add(rightWall);
+  // 奥壁
+  const backWall = new THREE.Mesh(new THREE.BoxGeometry(roomSize, roomHeight, wallThickness), wallMat);
+  backWall.position.set(0, roomHeight / 2, -roomSize / 2);
+  scene.add(backWall);
+  // 天井（半透明）
+  const ceiling = new THREE.Mesh(
+    new THREE.BoxGeometry(roomSize, wallThickness, roomSize),
+    new THREE.MeshLambertMaterial({ color: 0x993366, transparent: true, opacity: 0.5 })
+  );
+  ceiling.position.y = roomHeight;
+  scene.add(ceiling);
+
+  // === コイン配置（30個、浮遊） ===
+  const coins = [];
   for (let i = 0; i < 30; i++) {
-    const coin = document.createElement('div');
-    coin.className = 'belly-coin';
-    coin.textContent = '💰';
-    coin.style.left = Math.random() * 85 + 5 + '%';
-    coin.style.top = Math.random() * 70 + 5 + '%';
-    coin.style.animationDelay = Math.random() * 2 + 's';
-    const collectCoin = (e) => {
-      e.preventDefault();
-      if (cleaned || coin.dataset.collected === 'true') return;
-      coin.dataset.collected = 'true';
-      coin.classList.add('collected');
+    const coin = E.createCoin();
+    coin.position.set(
+      (Math.random() - 0.5) * (roomSize - 3),
+      1 + Math.random() * 8,
+      (Math.random() - 0.5) * (roomSize - 3)
+    );
+    coin.userData.collected = false;
+    coin.userData.bobOffset = Math.random() * Math.PI * 2;
+    scene.add(coin);
+    coins.push(coin);
+
+    // コインクリック
+    E.registerClick(coin, () => {
+      if (cleaned || coin.userData.collected) return;
+      coin.userData.collected = true;
       playSound('coin');
       addCoins(1);
-      setTimeout(() => { if (coin.parentNode) coin.parentNode.removeChild(coin); }, 300);
-    };
-    coin.addEventListener('click', collectCoin);
-    coin.addEventListener('touchstart', collectCoin, { passive: false });
-    belly.appendChild(coin);
+      // 収集アニメ
+      coin.userData.collectTime = t;
+    });
   }
 
-  // 包丁配置（隠された場所に）
+  // === 包丁配置（6本、少し隠す） ===
+  const knifeObjects = [];
   const knifePositions = [
-    { left: '15%', top: '20%', hint: '壁の裏' },
-    { left: '80%', top: '15%', hint: '泡の中' },
-    { left: '50%', top: '60%', hint: '奥の方' },
-    { left: '25%', top: '70%', hint: '暗がり' },
-    { left: '70%', top: '45%', hint: '隙間' },
-    { left: '40%', top: '30%', hint: '壁際' },
+    { x: -6, y: 2, z: -5 },
+    { x: 5, y: 6, z: -4 },
+    { x: -3, y: 9, z: 2 },
+    { x: 4, y: 3, z: 5 },
+    { x: -5, y: 7, z: -2 },
+    { x: 2, y: 5, z: -6 },
   ];
 
-  knifePositions.forEach((pos, i) => {
-    const knife = document.createElement('div');
-    knife.className = 'belly-knife';
-    knife.textContent = '🔪';
-    knife.style.left = pos.left;
-    knife.style.top = pos.top;
-    // 少しランダムに動かして見つけにくくする
-    knife.style.animationDelay = (i * 0.5) + 's';
-    const collectKnife = (e) => {
-      e.preventDefault();
-      if (cleaned || knife.dataset.collected === 'true') return;
-      knife.dataset.collected = 'true';
-      knife.classList.add('collected');
+  knifePositions.forEach((pos) => {
+    const knife = E.createKnife();
+    knife.position.set(pos.x, pos.y, pos.z);
+    knife.userData.collected = false;
+    knife.userData.bobOffset = Math.random() * Math.PI * 2;
+    scene.add(knife);
+    knifeObjects.push(knife);
+
+    E.registerClick(knife, () => {
+      if (cleaned || knife.userData.collected) return;
+      knife.userData.collected = true;
       knives++;
       playSound('knife');
-      knifeCounter.update(knives);
-      showMessage(wrap, `🔪 包丁ゲット！（${pos.hint}で発見）`, 1500);
-      setTimeout(() => { if (knife.parentNode) knife.parentNode.removeChild(knife); }, 300);
+      knifeCounterEl.textContent = `🔪 ${knives}/${KNIFE_TARGET}`;
+      showMessage(overlay, `🔪 包丁ゲット！`, 1200);
+      knife.userData.collectTime = t;
+
       if (knives >= KNIFE_TARGET) {
-        showCutButton();
+        setTimeout(() => showCutButton(), 500);
       }
-    };
-    knife.addEventListener('click', collectKnife);
-    knife.addEventListener('touchstart', collectKnife, { passive: false });
-    belly.appendChild(knife);
+    });
   });
 
-  // 消化液（酸）
-  const acid = document.createElement('div');
-  acid.className = 'belly-acid';
-  belly.appendChild(acid);
+  // === 消化液（緑の半透明プレーン、下から上昇） ===
+  const acidGeo = new THREE.BoxGeometry(roomSize - 0.5, 1, roomSize - 0.5);
+  const acidMat = new THREE.MeshLambertMaterial({
+    color: 0x33ff33, transparent: true, opacity: 0.5
+  });
+  const acid = new THREE.Mesh(acidGeo, acidMat);
+  acid.position.y = acidY;
+  scene.add(acid);
 
-  wrap.appendChild(belly);
+  // === UI（オーバーレイ）===
+  const overlay = E.getOverlay();
+  overlay.innerHTML = '';
 
-  // UI
-  const knifeCounter = createCounter(wrap, '🔪', 0, KNIFE_TARGET);
-  const acidBar = createProgressBar(wrap, '⚠️ 消化液');
-  initCoinUI(wrap);
-  showMessage(wrap, d.bellyIntro, 3000);
+  // 包丁カウンター
+  const knifeCounterEl = document.createElement('div');
+  knifeCounterEl.style.cssText = 'position:absolute;top:20px;left:50%;transform:translateX(-50%);font-size:28px;color:#fff;text-shadow:2px 2px 4px #000;z-index:10;';
+  knifeCounterEl.textContent = `🔪 0/${KNIFE_TARGET}`;
+  overlay.appendChild(knifeCounterEl);
+
+  // 消化液警告バー
+  const acidBarWrap = document.createElement('div');
+  acidBarWrap.style.cssText = 'position:absolute;top:60px;left:50%;transform:translateX(-50%);width:200px;z-index:10;';
+  const acidLabel = document.createElement('div');
+  acidLabel.style.cssText = 'font-size:14px;color:#66ff66;text-align:center;';
+  acidLabel.textContent = '⚠️ 消化液';
+  acidBarWrap.appendChild(acidLabel);
+  const acidBarBg = document.createElement('div');
+  acidBarBg.style.cssText = 'width:100%;height:12px;background:#333;border-radius:6px;overflow:hidden;';
+  const acidBarFill = document.createElement('div');
+  acidBarFill.style.cssText = 'width:0%;height:100%;background:linear-gradient(90deg,#33ff33,#ff3333);transition:width 0.3s;';
+  acidBarBg.appendChild(acidBarFill);
+  acidBarWrap.appendChild(acidBarBg);
+  overlay.appendChild(acidBarWrap);
+
   startBGM('w1');
+  showMessage(overlay, d.bellyIntro, 3000);
 
-  container.appendChild(wrap);
-
-  // 切るボタン表示
+  // === 「切る」ボタン表示 ===
   function showCutButton() {
     if (cleaned) return;
-    showBigMessage(wrap, d.cutReady, 2000);
-    const cutBtn = createButton('✂️ 切る！！！', () => {
+    showBigMessage(overlay, d.cutReady, 2000);
+
+    const cutBtn = document.createElement('button');
+    cutBtn.className = 'game-btn';
+    cutBtn.textContent = '✂️ 切る！！！';
+    cutBtn.style.cssText = 'position:absolute;bottom:15%;left:50%;transform:translateX(-50%);font-size:24px;padding:15px 40px;z-index:100;animation:pulse 0.5s infinite alternate;';
+    const doCut = (e) => {
+      e.preventDefault();
       if (cleaned) return;
-      cutAction(cutBtn);
-    }, 'cut-btn pulse-btn');
-    cutBtn.style.position = 'absolute';
-    cutBtn.style.bottom = '20%';
-    cutBtn.style.left = '50%';
-    cutBtn.style.transform = 'translateX(-50%)';
-    cutBtn.style.zIndex = '100';
-    wrap.appendChild(cutBtn);
+      cutCount++;
+      playSound('cut');
+      showMessage(overlay, '🔪✂️ザクッ！', 500);
+
+      // 画面シェイク（カメラ揺らし）
+      camera.position.x += (Math.random() - 0.5) * 2;
+      camera.position.y += (Math.random() - 0.5) * 1;
+
+      if (cutCount >= 5) {
+        cutBtn.remove();
+        escapeAnimation();
+      }
+    };
+    cutBtn.addEventListener('click', doCut);
+    cutBtn.addEventListener('touchstart', doCut, { passive: false });
+    overlay.appendChild(cutBtn);
   }
 
-  let cutCount = 0;
-  function cutAction(btn) {
-    cutCount++;
-    playSound('cut');
-    showMessage(wrap, '🔪✂️ザクッ！', 500);
-    wrap.classList.add('shake');
-    setTimeout(() => wrap.classList.remove('shake'), 200);
-
-    if (cutCount >= 5) {
-      if (btn.parentNode) btn.parentNode.removeChild(btn);
-      stopBGM();
-      showBigMessage(wrap, d.cutting, 1500);
-      playSound('explode');
-
-      // 脱出演出
-      const flash = document.createElement('div');
-      flash.className = 'white-flash';
-      wrap.appendChild(flash);
-
-      setTimeout(() => {
-        showBigMessage(wrap, d.escaped, 2000);
-        playSound('clear');
-        setTimeout(() => {
-          if (!cleaned) onComplete();
-        }, 2500);
-      }, 1500);
-    }
-  }
-
-  // ゲームループ（消化液上昇）
-  function gameLoop() {
+  // === 脱出演出 ===
+  function escapeAnimation() {
     if (cleaned) return;
-    acidLevel -= acidSpeed;
-    acid.style.height = (100 - acidLevel) + '%';
-    acidBar.update(100 - acidLevel);
+    stopBGM();
+    playSound('explode');
+    showBigMessage(overlay, d.cutting, 1500);
 
-    if (acidLevel <= 10) {
-      // ゲームオーバー → リスタート
-      showBigMessage(wrap, '消化されちゃった！💀 もう一度！', 2000);
-      acidLevel = 100;
-      acidSpeed += 0.005; // 少しずつ早く
-    }
+    // 壁を破壊（非表示にする）
+    scene.remove(backWall);
+    scene.remove(ceiling);
 
-    animId = requestAnimationFrame(gameLoop);
+    // 白フラッシュ
+    scene.background = new THREE.Color(0xffffff);
+    setTimeout(() => {
+      scene.background = new THREE.Color(0x87ceeb);
+    }, 500);
+
+    // 脱出パーティクル
+    const particles = E.createParticles(100, 0xffff00, 0.3);
+    scene.add(particles);
+
+    setTimeout(() => {
+      showBigMessage(overlay, d.escaped, 2000);
+      playSound('clear');
+      setTimeout(() => {
+        if (!cleaned) onComplete();
+      }, 2500);
+    }, 1500);
   }
-  animId = requestAnimationFrame(gameLoop);
 
-  return {
-    cleanup() {
-      cleaned = true;
-      stopBGM();
-      if (animId) cancelAnimationFrame(animId);
-      knifeCounter.remove();
-      acidBar.remove();
-      if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+  // === メインループ ===
+  E.startLoop(() => {
+    if (cleaned) return;
+    t += 0.016;
+
+    // コインアニメーション
+    coins.forEach(coin => {
+      if (coin.userData.collected) {
+        if (coin.userData.collectTime !== undefined) {
+          const elapsed = t - coin.userData.collectTime;
+          coin.position.y += 0.15;
+          coin.scale.setScalar(Math.max(0, 1 - elapsed * 3));
+          if (elapsed > 0.5) {
+            scene.remove(coin);
+            coin.userData.collectTime = undefined;
+          }
+        }
+        return;
+      }
+      // 浮遊回転
+      coin.position.y += Math.sin(t * 2 + coin.userData.bobOffset) * 0.003;
+      coin.rotation.z += 0.03;
+    });
+
+    // 包丁アニメーション
+    knifeObjects.forEach(knife => {
+      if (knife.userData.collected) {
+        if (knife.userData.collectTime !== undefined) {
+          const elapsed = t - knife.userData.collectTime;
+          knife.position.y += 0.2;
+          knife.rotation.z += 0.3;
+          knife.scale.setScalar(Math.max(0, 1 - elapsed * 3));
+          if (elapsed > 0.5) {
+            scene.remove(knife);
+            knife.userData.collectTime = undefined;
+          }
+        }
+        return;
+      }
+      // 浮遊＆微回転
+      knife.position.y += Math.sin(t * 1.5 + knife.userData.bobOffset) * 0.003;
+      knife.rotation.y += 0.02;
+      // 光るエフェクト（スケールパルス）
+      const pulse = 1 + Math.sin(t * 4 + knife.userData.bobOffset) * 0.1;
+      knife.scale.setScalar(pulse);
+    });
+
+    // 消化液上昇
+    acidY += acidSpeed;
+    acid.position.y = acidY;
+    acid.scale.y = Math.max(0.1, acidY + 5);
+    const acidPct = Math.min(100, Math.max(0, ((acidY + 5) / 14) * 100));
+    acidBarFill.style.width = acidPct + '%';
+
+    // 消化液が上まで来たらリセット
+    if (acidY > 9) {
+      showBigMessage(overlay, '消化されちゃった！💀 もう一度！', 2000);
+      acidY = -5;
+      acidSpeed += 0.001;
     }
-  };
+
+    // ライトの揺らぎ
+    pinkLight.intensity = 1.2 + Math.sin(t * 2) * 0.3;
+    greenLight.position.y = acidY;
+    greenLight.intensity = 0.5 + acidPct * 0.01;
+
+    // カメラの軽い揺れ
+    camera.position.x = Math.sin(t * 0.7) * 1;
+    camera.lookAt(0, 4, 0);
+  });
+
+  // === クリーンアップ ===
+  function cleanup() {
+    cleaned = true;
+    stopBGM();
+    E.stopLoop();
+    E.clearClicks();
+    E.disposeScene(scene);
+    overlay.innerHTML = '';
+  }
+
+  return { cleanup };
 }

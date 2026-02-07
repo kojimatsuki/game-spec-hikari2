@@ -1,247 +1,172 @@
-// w3-magic.js - W3ステージ2: 魔法使い変身＆猫変身
-
+// w3-magic.js - W3ステージ2: 魔法使い変身＆猫変身（3Dポリゴン版）
 import { DIALOGUES, HIKARI_FORMS, ANIMALS_FOR_TRANSFORM } from './data.js';
 import { playSound, startBGM, stopBGM } from './audio.js';
 import { addCoins, getCoins, spendCoins } from './economy.js';
-import { showMessage, showBigMessage, createButton, initCoinUI } from './ui.js';
+import { showMessage, showBigMessage } from './ui.js';
 import { setForm, getEmoji, getFormCost } from './hikari.js';
+import * as E from './engine3d.js';
+const THREE = E.THREE;
 
 export function initW3Magic(container, gameState, onComplete) {
   const d = DIALOGUES.w3;
-  let cleaned = false;
-  let momEventDone = false;
-  let coinCollectPhase = false;
+  let cleaned = false, t = 0, momEventDone = false;
+  const timers = [], scatterCoins = [];
+  const animalColors = { cat:0xff9944, dog:0x996633, bird:0x44aaff, fish:0x4488ff, sheep:0xeeeeee, lion:0xddaa33 };
 
-  const wrap = document.createElement('div');
-  wrap.className = 'stage-w3-magic';
+  // === シーン（ファンタジー紫） ===
+  const scene = E.createScene(0x2a0044);
+  scene.fog = new THREE.Fog(0x2a0044, 20, 60);
+  const camera = E.createCamera(55);
+  camera.position.set(0, 6, 10); camera.lookAt(0, 2, 0);
+  E.setScene(scene, camera);
+  scene.children.forEach(c => { if (c.isAmbientLight) c.intensity = 0.5; });
+  const purpleLight = new THREE.PointLight(0xaa44ff, 1.0, 30);
+  purpleLight.position.set(0, 8, 0); scene.add(purpleLight);
+  const pinkLight = new THREE.PointLight(0xff44aa, 0.5, 20);
+  pinkLight.position.set(-5, 3, 5); scene.add(pinkLight);
 
-  const sceneArea = document.createElement('div');
-  sceneArea.className = 'magic-scene';
-  wrap.appendChild(sceneArea);
+  scene.add(E.createGridGround(30, 0x330066, 0x5500aa));
+  const hikari = E.createHikari();
+  hikari.position.set(0, 0, 0); hikari.scale.setScalar(1.5); scene.add(hikari);
 
-  initCoinUI(wrap);
-  startBGM('w3');
-  setForm('magician');
+  // 星の装飾
+  for (let i = 0; i < 20; i++) {
+    const star = E.createStar(0.15 + Math.random() * 0.2);
+    const a = Math.random() * Math.PI * 2, r = 5 + Math.random() * 10;
+    star.position.set(Math.cos(a)*r, 2+Math.random()*6, Math.sin(a)*r);
+    scene.add(star);
+  }
+  const magicParticles = E.createParticles(40, 0xaa66ff, 0.15);
+  scene.add(magicParticles);
 
-  container.appendChild(wrap);
+  const overlay = E.getOverlay(); overlay.innerHTML = '';
+  startBGM('w3'); setForm('magician');
+  buildTransformMenu();
 
-  renderTransformMenu();
-
-  function renderTransformMenu() {
+  // === 変身メニュー ===
+  function buildTransformMenu() {
     if (cleaned) return;
-    sceneArea.innerHTML = '';
+    overlay.innerHTML = '';
+    addCoinUI();
+    const titleEl = document.createElement('div');
+    titleEl.style.cssText = 'position:absolute;top:10px;left:50%;transform:translateX(-50%);font-size:22px;color:#ffcc00;text-shadow:1px 1px 3px #000;z-index:10;';
+    titleEl.textContent = '🪄 変身メニュー 🪄'; overlay.appendChild(titleEl);
 
-    // ひかりちゃん表示
-    const hikariDisplay = document.createElement('div');
-    hikariDisplay.className = 'hikari-big';
-    hikariDisplay.textContent = getEmoji();
-    sceneArea.appendChild(hikariDisplay);
-
-    const title = document.createElement('div');
-    title.className = 'magic-title';
-    title.textContent = '🪄 変身メニュー 🪄';
-    sceneArea.appendChild(title);
-
-    // 動物ボタン
-    const btnGrid = document.createElement('div');
-    btnGrid.className = 'transform-grid';
-
-    ANIMALS_FOR_TRANSFORM.forEach(formKey => {
-      const form = HIKARI_FORMS[formKey];
-      const cost = form.cost || 0;
-      const btn = document.createElement('button');
-      btn.className = 'transform-btn';
-      btn.innerHTML = `<span class="tf-emoji">${form.emoji}</span><span class="tf-name">${form.label}</span><span class="tf-cost">💰${cost}</span>`;
-
-      const doTransform = (e) => {
-        e.preventDefault();
-        if (cleaned) return;
-        if (getCoins() < cost) {
-          showMessage(wrap, `コインが足りない！💰${cost}必要`, 1500);
-          playSound('poop');
-          return;
-        }
-        spendCoins(cost);
-        setForm(formKey);
-        playSound('transform');
-        hikariDisplay.textContent = form.emoji;
-        showMessage(wrap, `${form.label}に変身！${form.emoji}`, 1500);
-
-        // 変身エフェクト
-        hikariDisplay.classList.add('transforming');
-        setTimeout(() => hikariDisplay.classList.remove('transforming'), 800);
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:absolute;bottom:15%;left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:360px;z-index:10;';
+    ANIMALS_FOR_TRANSFORM.forEach(key => {
+      const form = HIKARI_FORMS[key], cost = form.cost||0;
+      const btn = document.createElement('button'); btn.className = 'game-btn';
+      btn.style.cssText = 'font-size:14px;padding:8px 12px;min-width:100px;';
+      btn.textContent = `${form.emoji} ${form.label} 💰${cost}`;
+      const act = e => { e.preventDefault(); if(cleaned)return;
+        if(getCoins()<cost){showMessage(overlay,`コインが足りない！💰${cost}必要`,1500);playSound('poop');return;}
+        spendCoins(cost); setForm(key); playSound('transform');
+        showMessage(overlay,`${form.label}に変身！${form.emoji}`,1500);
+        hikari.traverse(c=>{if(c.isMesh&&c.position.y>0.8&&c.position.y<1.5)c.material.color.setHex(animalColors[key]||0xff69b4);});
+        hikari.scale.setScalar(2.0); setTimeout(()=>{if(!cleaned)hikari.scale.setScalar(1.5);},300);
+        updateCoinUI();
       };
-      btn.addEventListener('click', doTransform);
-      btn.addEventListener('touchstart', doTransform, { passive: false });
-      btnGrid.appendChild(btn);
+      btn.addEventListener('click',act); btn.addEventListener('touchstart',e=>{e.preventDefault();act(e);},{passive:false});
+      wrap.appendChild(btn);
     });
+    overlay.appendChild(wrap);
 
-    sceneArea.appendChild(btnGrid);
-
-    // お母さんイベントボタン（まだの場合）
     if (!momEventDone) {
-      const momBtn = createButton('👩 お母さんに会う', () => {
-        startMomEvent();
-      }, 'action-btn mom-btn');
-      sceneArea.appendChild(momBtn);
+      addBtn('👩 お母さんに会う','#ff88cc','bottom:5%',e=>{e.preventDefault();if(!cleaned)startMomEvent();});
     } else {
-      const nextBtn = createButton('次のステージへ ▶', () => {
-        if (!cleaned) onComplete();
-      }, 'action-btn next-btn');
-      sceneArea.appendChild(nextBtn);
+      addBtn('次のステージへ ▶','#44cc44','bottom:5%',e=>{e.preventDefault();if(!cleaned)onComplete();});
     }
   }
 
+  function addBtn(text,bg,pos,cb) {
+    const b = document.createElement('button'); b.className='game-btn';
+    b.style.cssText = `position:absolute;${pos};left:50%;transform:translateX(-50%);font-size:18px;padding:12px 24px;background:${bg};z-index:10;`;
+    b.textContent = text; b.addEventListener('click',cb); b.addEventListener('touchstart',cb,{passive:false});
+    overlay.appendChild(b);
+  }
+  function addCoinUI() {
+    const el = document.createElement('div'); el.id='magic-coins';
+    el.style.cssText='position:absolute;top:10px;right:15px;font-size:22px;color:#ffd700;text-shadow:1px 1px 3px #000;z-index:10;';
+    el.textContent=`💰 ${getCoins()}`; overlay.appendChild(el);
+  }
+  function updateCoinUI() { const el=document.getElementById('magic-coins'); if(el)el.textContent=`💰 ${getCoins()}`; }
+
+  // === お母さんイベント ===
   function startMomEvent() {
-    if (cleaned) return;
-    sceneArea.innerHTML = '';
+    overlay.innerHTML = '';
+    const mom = E.createBlockChar(0xff88cc, 0xffdbac, 1.2); mom.position.set(3,0,2); scene.add(mom);
+    const bubble = E.createTextSprite(d.momWant,{fontSize:32,color:'#fff',bg:'rgba(0,0,0,0.6)'});
+    bubble.position.set(3,4.5,2); scene.add(bubble);
+    playSound('chime'); showMessage(overlay,'猫に変身するにはコイン💰30枚必要！集めよう！',2500);
+    camera.position.set(2,7,12); camera.lookAt(1.5,2,1);
 
-    // お母さん登場
-    const momScene = document.createElement('div');
-    momScene.className = 'mom-scene';
-
-    const mom = document.createElement('div');
-    mom.className = 'mom-char';
-    mom.textContent = '👩';
-    momScene.appendChild(mom);
-
-    const bubble = document.createElement('div');
-    bubble.className = 'speech-bubble';
-    bubble.textContent = d.momWant;
-    momScene.appendChild(bubble);
-
-    sceneArea.appendChild(momScene);
-    playSound('chime');
-
-    // コイン集めフェーズ
-    setTimeout(() => {
-      if (cleaned) return;
-      showMessage(wrap, '猫に変身するにはコイン💰30枚必要！集めよう！', 2500);
-      coinCollectPhase = true;
-      showCoinCollect();
-    }, 2500);
+    const tid = setTimeout(()=>{
+      if(cleaned)return;
+      // コインばらまき
+      for(let i=0;i<20;i++) spawnCoin3D();
+      const resp = setInterval(()=>{
+        if(cleaned||momEventDone){clearInterval(resp);return;}
+        if(scatterCoins.filter(c=>c.userData.alive).length<5) for(let j=0;j<8;j++) spawnCoin3D();
+      },3000);
+      timers.push(resp);
+      addCoinUI();
+      addBtn('🐱 猫に変身！(💰30)','#ff9944','bottom:8%',e=>{
+        e.preventDefault(); if(cleaned)return;
+        if(getCoins()<30){showMessage(overlay,'コインが足りない！もっと集めよう！',1500);return;}
+        spendCoins(30); transformToCat(mom,bubble);
+      });
+    },2500);
+    timers.push(tid);
   }
 
-  function showCoinCollect() {
-    if (cleaned) return;
-    sceneArea.innerHTML = '';
-
-    const collectArea = document.createElement('div');
-    collectArea.className = 'coin-collect-area';
-
-    // ばらまかれたコイン
-    for (let i = 0; i < 20; i++) {
-      const coin = document.createElement('div');
-      coin.className = 'scatter-coin';
-      coin.textContent = '💰';
-      coin.style.left = (5 + Math.random() * 85) + '%';
-      coin.style.top = (10 + Math.random() * 70) + '%';
-      coin.style.animationDelay = (Math.random() * 0.5) + 's';
-
-      const collectCoin = (e) => {
-        e.preventDefault();
-        if (cleaned || coin.dataset.collected === 'true') return;
-        coin.dataset.collected = 'true';
-        coin.classList.add('collected');
-        addCoins(3);
-        playSound('coin');
-        showMessage(wrap, 'モグモグ💰', 400);
-        setTimeout(() => { if (coin.parentNode) coin.parentNode.removeChild(coin); }, 300);
-      };
-      coin.addEventListener('click', collectCoin);
-      coin.addEventListener('touchstart', collectCoin, { passive: false });
-      collectArea.appendChild(coin);
-    }
-
-    sceneArea.appendChild(collectArea);
-
-    // 猫変身ボタン
-    const catBtn = createButton('🐱 猫に変身！(💰30)', () => {
-      if (getCoins() < 30) {
-        showMessage(wrap, 'コインが足りない！もっと集めよう！', 1500);
-        return;
-      }
-      spendCoins(30);
-      transformToCat();
-    }, 'action-btn cat-btn');
-    sceneArea.appendChild(catBtn);
-
-    // コインリスポーン
-    const respawn = setInterval(() => {
-      if (cleaned || momEventDone) { clearInterval(respawn); return; }
-      const remaining = collectArea.querySelectorAll('.scatter-coin:not(.collected)');
-      if (remaining.length < 5) {
-        for (let i = 0; i < 8; i++) {
-          const coin = document.createElement('div');
-          coin.className = 'scatter-coin';
-          coin.textContent = '💰';
-          coin.style.left = (5 + Math.random() * 85) + '%';
-          coin.style.top = (10 + Math.random() * 70) + '%';
-          const collectCoin = (e) => {
-            e.preventDefault();
-            if (cleaned || coin.dataset.collected === 'true') return;
-            coin.dataset.collected = 'true';
-            coin.classList.add('collected');
-            addCoins(3);
-            playSound('coin');
-            setTimeout(() => { if (coin.parentNode) coin.parentNode.removeChild(coin); }, 300);
-          };
-          coin.addEventListener('click', collectCoin);
-          coin.addEventListener('touchstart', collectCoin, { passive: false });
-          collectArea.appendChild(coin);
-        }
-      }
-    }, 3000);
+  function spawnCoin3D() {
+    const coin = E.createCoin();
+    const a=Math.random()*Math.PI*2, r=2+Math.random()*8;
+    coin.position.set(Math.cos(a)*r,0.3+Math.random()*0.5,Math.sin(a)*r);
+    coin.userData.alive=true; coin.userData.bobOffset=Math.random()*Math.PI*2;
+    scene.add(coin); scatterCoins.push(coin);
+    E.registerClick(coin,()=>{ if(cleaned||!coin.userData.alive)return;
+      coin.userData.alive=false; coin.userData.collectTime=t;
+      addCoins(3); playSound('coin'); updateCoinUI();
+    });
   }
 
-  function transformToCat() {
-    if (cleaned) return;
-    setForm('cat');
-    playSound('transform');
-    sceneArea.innerHTML = '';
-
-    // 変身演出
-    const catScene = document.createElement('div');
-    catScene.className = 'cat-transform-scene';
-
-    const cat = document.createElement('div');
-    cat.className = 'big-cat';
-    cat.textContent = '🐱✨';
-    catScene.appendChild(cat);
-
-    // お母さんの反応
-    const mom = document.createElement('div');
-    mom.className = 'mom-char';
-    mom.textContent = '👩';
-    catScene.appendChild(mom);
-
-    const bubble = document.createElement('div');
-    bubble.className = 'speech-bubble';
-    bubble.textContent = d.momThanks;
-    catScene.appendChild(bubble);
-
-    const secret = document.createElement('div');
-    secret.className = 'secret-text';
-    secret.textContent = '（実はひかりちゃんだとバレない…笑）';
-    catScene.appendChild(secret);
-
-    sceneArea.appendChild(catScene);
-    playSound('clear');
-
-    momEventDone = true;
-
-    setTimeout(() => {
-      if (cleaned) return;
-      setForm('magician');
-      renderTransformMenu();
-    }, 4000);
+  function transformToCat(mom,bubble) {
+    setForm('cat'); playSound('transform');
+    hikari.traverse(c=>{if(c.isMesh&&c.position.y>0.8&&c.position.y<1.5)c.material.color.setHex(0xff9944);});
+    hikari.scale.setScalar(2.0); setTimeout(()=>{if(!cleaned)hikari.scale.setScalar(1.5);},400);
+    scene.remove(bubble);
+    const tb = E.createTextSprite(d.momThanks,{fontSize:28,color:'#fff',bg:'rgba(0,0,0,0.6)'});
+    tb.position.set(3,4.5,2); scene.add(tb);
+    showBigMessage(overlay,d.momThanks,2500); playSound('clear');
+    const sec=document.createElement('div');
+    sec.style.cssText='position:absolute;top:40%;left:50%;transform:translateX(-50%);font-size:16px;color:#aaa;text-shadow:1px 1px 2px #000;z-index:10;font-style:italic;';
+    sec.textContent='(実はひかりちゃんだとバレない…笑)'; overlay.appendChild(sec);
+    momEventDone=true; scene.add(E.createParticles(50,0xff9944,0.2));
+    const tid=setTimeout(()=>{if(cleaned)return; setForm('magician'); scene.remove(mom); scene.remove(tb);
+      camera.position.set(0,6,10); camera.lookAt(0,2,0);
+      scatterCoins.forEach(c=>{scene.remove(c);E.unregisterClick(c);}); buildTransformMenu();
+    },4000); timers.push(tid);
   }
 
-  return {
-    cleanup() {
-      cleaned = true;
-      stopBGM();
-      if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
-    }
-  };
+  // === メインループ ===
+  E.startLoop(()=>{
+    if(cleaned)return; t+=0.016;
+    hikari.position.y=Math.sin(t*1.5)*0.15; hikari.rotation.y=Math.sin(t*0.5)*0.2;
+    purpleLight.intensity=1+Math.sin(t*2)*0.3; pinkLight.intensity=0.5+Math.sin(t*1.5+1)*0.2;
+    E.updateParticles(magicParticles);
+    scatterCoins.forEach(coin=>{
+      if(!coin.userData.alive){
+        if(coin.userData.collectTime!==undefined){const e=t-coin.userData.collectTime;
+          coin.position.y+=0.15; coin.scale.setScalar(Math.max(0,1-e*3));
+          if(e>0.5){scene.remove(coin);E.unregisterClick(coin);coin.userData.collectTime=undefined;}}
+        return;}
+      coin.position.y=0.3+Math.sin(t*2+coin.userData.bobOffset)*0.1; coin.rotation.z+=0.03;
+    });
+  });
+
+  function cleanup() { cleaned=true; stopBGM(); timers.forEach(id=>{clearTimeout(id);clearInterval(id);});
+    E.stopLoop(); E.clearClicks(); E.disposeScene(scene); overlay.innerHTML=''; }
+  return { cleanup };
 }

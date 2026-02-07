@@ -1,271 +1,184 @@
-// secret-boss.js - 隠しステージ: お化け連打→爆発
-
+// secret-boss.js - 隠しステージ: お化け連打バトル（3Dポリゴン版）
+// Phase1: 50体のお化けウェーブ → Phase2: 巨大ボスお化け
 import { DIALOGUES } from './data.js';
 import { playSound, stopBGM } from './audio.js';
 import { addCoins } from './economy.js';
-import { showMessage, showBigMessage, initCoinUI } from './ui.js';
+import { showMessage, showBigMessage } from './ui.js';
+import * as E from './engine3d.js';
+const THREE = E.THREE;
 
 export function initSecretBoss(container, gameState, onComplete) {
   const d = DIALOGUES.secret;
-  let cleaned = false;
-  let animId = null;
-  let ghostsDefeated = 0;
+  let cleaned = false, t = 0, ghostsDefeated = 0, combo = 0;
   const TOTAL = 50;
-  let combo = 0;
-  let phase = 'swarm'; // swarm, boss
-  let bossHP = 100;
-  let bossExploded = false;
-  let ghosts = [];
+  let phase = 'swarm', bossHP = 100, bossExploded = false;
+  const timers = [], ghosts = [];
+  let boss = null, bossEyes = [];
 
-  const wrap = document.createElement('div');
-  wrap.className = 'stage-secret';
+  // === シーン（真っ黒）===
+  const scene = E.createScene(0x000000);
+  scene.fog = new THREE.Fog(0x000000, 20, 60);
+  const camera = E.createCamera(60);
+  camera.position.set(0, 12, 18); camera.lookAt(0, 2, 0);
+  E.setScene(scene, camera);
+  scene.children.forEach(c => { if(c.isAmbientLight)c.intensity=0.15; if(c.isDirectionalLight)c.intensity=0.2; });
+  const redLight = new THREE.PointLight(0xff2222, 0.6, 30); redLight.position.set(0,8,0); scene.add(redLight);
+  const blueLight = new THREE.PointLight(0x2244ff, 0.4, 25); blueLight.position.set(-5,5,5); scene.add(blueLight);
+  scene.add(E.createGround(50, 0x0a0a0a));
 
-  // コンボ表示
+  // === UI ===
+  const overlay = E.getOverlay(); overlay.innerHTML = '';
   const comboEl = document.createElement('div');
-  comboEl.className = 'combo-display';
-  comboEl.textContent = '0 コンボ！';
-  wrap.appendChild(comboEl);
-
-  // 進捗
+  comboEl.style.cssText = 'position:absolute;top:60px;left:50%;transform:translateX(-50%);font-size:24px;color:#ff6600;text-shadow:2px 2px 4px #000;z-index:10;transition:all 0.15s;';
+  comboEl.textContent = '0 コンボ！'; overlay.appendChild(comboEl);
   const progressEl = document.createElement('div');
-  progressEl.className = 'secret-progress';
-  progressEl.textContent = `👻 0/${TOTAL}`;
-  wrap.appendChild(progressEl);
+  progressEl.style.cssText = 'position:absolute;top:20px;left:50%;transform:translateX(-50%);font-size:28px;color:#fff;text-shadow:2px 2px 4px #000;z-index:10;';
+  progressEl.textContent = `👻 0/${TOTAL}`; overlay.appendChild(progressEl);
+  showMessage(overlay, d.intro, 3000);
 
-  initCoinUI(wrap);
-  showMessage(wrap, d.intro, 3000);
-
-  container.appendChild(wrap);
-
-  // お化け大量生成
-  spawnGhostWave();
-
-  function spawnGhostWave() {
-    const batchSize = Math.min(15, TOTAL - ghostsDefeated);
-    for (let i = 0; i < batchSize; i++) {
-      spawnGhost();
-    }
-  }
-
+  // === お化けスポーン ===
   function spawnGhost() {
-    const g = document.createElement('div');
-    g.className = 'secret-ghost';
-    g.textContent = '👻';
-    g.dataset.alive = 'true';
-    g.dataset.x = Math.random() * 85 + 5;
-    g.dataset.y = Math.random() * 75 + 5;
-    g.dataset.sizePhase = 0;
-    g.dataset.dx = (Math.random() - 0.5) * 3;
-    g.dataset.dy = (Math.random() - 0.5) * 3;
+    if (cleaned || ghostsDefeated >= TOTAL) return;
+    const ghost = E.createGhost(0.6 + Math.random() * 0.5);
+    const a = Math.random()*Math.PI*2, r = 3+Math.random()*12;
+    ghost.position.set(Math.cos(a)*r, 1+Math.random()*4, Math.sin(a)*r-2);
+    ghost.userData.alive = true;
+    ghost.userData.dx = (Math.random()-0.5)*0.12;
+    ghost.userData.dy = (Math.random()-0.5)*0.05;
+    ghost.userData.dz = (Math.random()-0.5)*0.12;
+    ghost.userData.bobOffset = Math.random()*Math.PI*2;
+    ghost.userData.pulsePhase = Math.random()*Math.PI*2;
+    scene.add(ghost); ghosts.push(ghost);
 
-    const hitGhost = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (cleaned || g.dataset.alive !== 'true') return;
-      g.dataset.alive = 'false';
-      ghostsDefeated++;
-      combo++;
-      g.classList.add('ghost-popped');
-      playSound('hit');
-
+    E.registerClick(ghost, () => {
+      if (cleaned || !ghost.userData.alive || phase !== 'swarm') return;
+      ghost.userData.alive = false; ghost.userData.defeatTime = t;
+      ghostsDefeated++; combo++; playSound('hit');
       comboEl.textContent = `${combo} コンボ！`;
       if (combo % 10 === 0) {
-        comboEl.classList.add('combo-flash');
-        setTimeout(() => comboEl.classList.remove('combo-flash'), 300);
-        showMessage(wrap, `🔥 ${combo}コンボ！`, 800);
+        comboEl.style.fontSize = '36px'; comboEl.style.color = '#ffcc00';
+        showMessage(overlay, `🔥 ${combo}コンボ！`, 800);
+        timers.push(setTimeout(() => { comboEl.style.fontSize='24px'; comboEl.style.color='#ff6600'; }, 300));
       }
-      progressEl.textContent = `👻 ${ghostsDefeated}/${TOTAL}`;
-      addCoins(1);
-
-      setTimeout(() => { if (g.parentNode) g.parentNode.removeChild(g); }, 300);
-
-      // 追加スポーン
-      const aliveCount = ghosts.filter(gh => gh.dataset.alive === 'true').length;
-      if (ghostsDefeated < TOTAL && aliveCount < 8) {
-        for (let i = 0; i < 5; i++) {
-          if (ghostsDefeated + aliveCount + i < TOTAL) spawnGhost();
-        }
+      progressEl.textContent = `👻 ${ghostsDefeated}/${TOTAL}`; addCoins(1);
+      const alive = ghosts.filter(g => g.userData.alive).length;
+      if (ghostsDefeated < TOTAL && alive < 8) {
+        const n = Math.min(5, TOTAL - ghostsDefeated - alive);
+        for (let i = 0; i < n; i++) spawnGhost();
       }
-
-      if (ghostsDefeated >= TOTAL) {
-        startBossPhase();
-      }
-    };
-    g.addEventListener('click', hitGhost);
-    g.addEventListener('touchstart', hitGhost, { passive: false });
-    wrap.appendChild(g);
-    ghosts.push(g);
-  }
-
-  // お化けアニメーション
-  function updateGhosts() {
-    ghosts.forEach(g => {
-      if (g.dataset.alive !== 'true') return;
-      let x = parseFloat(g.dataset.x);
-      let y = parseFloat(g.dataset.y);
-      let dx = parseFloat(g.dataset.dx);
-      let dy = parseFloat(g.dataset.dy);
-      let sp = parseFloat(g.dataset.sizePhase);
-
-      x += dx * 0.3;
-      y += dy * 0.3;
-      if (x < 3 || x > 92) dx = -dx;
-      if (y < 3 || y > 82) dy = -dy;
-      if (Math.random() < 0.02) dx = (Math.random() - 0.5) * 3;
-      if (Math.random() < 0.02) dy = (Math.random() - 0.5) * 3;
-
-      // サイズ変化（プルプル）
-      sp += 0.05;
-      const sizeMulti = 1 + Math.sin(sp) * 0.4;
-      const baseSize = 28 + Math.random() * 4;
-
-      g.dataset.x = x;
-      g.dataset.y = y;
-      g.dataset.dx = dx;
-      g.dataset.dy = dy;
-      g.dataset.sizePhase = sp;
-      g.style.left = x + '%';
-      g.style.top = y + '%';
-      g.style.fontSize = (baseSize * sizeMulti) + 'px';
+      if (ghostsDefeated >= TOTAL) startBossPhase();
     });
   }
+  // 初期15体
+  for (let i = 0; i < Math.min(15, TOTAL); i++) spawnGhost();
 
-  // ボスフェーズ
+  // === ボスフェーズ ===
   function startBossPhase() {
-    if (cleaned) return;
-    phase = 'boss';
-    showBigMessage(wrap, d.bossAppear, 2500);
-    playSound('brainrot');
-
-    // 残ったお化けを消す
-    ghosts.forEach(g => {
-      if (g.parentNode) g.parentNode.removeChild(g);
-    });
-    ghosts = [];
-
-    setTimeout(() => {
-      if (cleaned) return;
-      spawnBoss();
-    }, 2500);
+    phase = 'boss'; showBigMessage(overlay, d.bossAppear, 2500); playSound('brainrot');
+    ghosts.forEach(g => { scene.remove(g); E.unregisterClick(g); });
+    timers.push(setTimeout(() => { if (!cleaned) spawnBoss(); }, 2500));
   }
-
-  let boss = null;
-  let bossEyePhase = 0;
 
   function spawnBoss() {
-    boss = document.createElement('div');
-    boss.className = 'boss-ghost';
-    boss.innerHTML = '<div class="boss-body">👻</div><div class="boss-eyes">👀</div>';
-    boss.style.left = '50%';
-    boss.style.top = '40%';
-    wrap.appendChild(boss);
-
-    // HP表示
-    const hpBar = document.createElement('div');
-    hpBar.className = 'boss-hp-bar';
-    const hpFill = document.createElement('div');
-    hpFill.className = 'boss-hp-fill';
-    hpFill.id = 'boss-hp';
-    hpBar.appendChild(hpFill);
-    wrap.appendChild(hpBar);
-
+    boss = E.createGhost(3); boss.position.set(0, 2, 0); scene.add(boss);
+    boss.traverse(child => {
+      if (child.isMesh && child.geometry?.type === 'SphereGeometry') {
+        const p = child.geometry.parameters;
+        if (p && p.radius < 0.5) bossEyes.push(child);
+      }
+    });
     progressEl.textContent = `BOSS HP: ${bossHP}%`;
+    // HPバー
+    const hw = document.createElement('div'); hw.id = 'boss-hp-wrap';
+    hw.style.cssText = 'position:absolute;top:95px;left:50%;transform:translateX(-50%);width:250px;z-index:10;';
+    const bg = document.createElement('div');
+    bg.style.cssText = 'width:100%;height:16px;background:#333;border-radius:8px;overflow:hidden;border:2px solid #666;';
+    const fill = document.createElement('div'); fill.id = 'boss-hp-fill';
+    fill.style.cssText = 'width:100%;height:100%;background:linear-gradient(90deg,#ff0000,#ff6600);transition:width 0.1s;';
+    bg.appendChild(fill); hw.appendChild(bg); overlay.appendChild(hw);
 
-    const hitBoss = (e) => {
-      e.preventDefault();
+    E.registerClick(boss, () => {
       if (cleaned || bossHP <= 0) return;
-      bossHP -= 2;
-      combo++;
+      bossHP -= 2; combo++; playSound('hit');
       comboEl.textContent = `${combo} コンボ！`;
-      playSound('hit');
-
-      const hpEl = document.getElementById('boss-hp');
-      if (hpEl) hpEl.style.width = bossHP + '%';
+      if (combo % 20 === 0) showMessage(overlay, `🔥🔥 ${combo}コンボ！！`, 800);
+      const fl = document.getElementById('boss-hp-fill');
+      if (fl) fl.style.width = Math.max(0, bossHP) + '%';
       progressEl.textContent = `BOSS HP: ${Math.max(0, bossHP)}%`;
-
-      boss.classList.add('boss-hit');
-      setTimeout(() => boss.classList.remove('boss-hit'), 100);
-
-      if (combo % 20 === 0) {
-        showMessage(wrap, `🔥🔥 ${combo}コンボ！！`, 800);
-      }
-
-      // 背景が徐々に明るく
-      const brightness = 100 - bossHP;
-      wrap.style.backgroundColor = `rgba(255, 255, 255, ${brightness / 200})`;
-
-      if (bossHP <= 0) {
-        bossExplode();
-      }
-    };
-    boss.addEventListener('click', hitBoss);
-    boss.addEventListener('touchstart', hitBoss, { passive: false });
+      // ヒットフラッシュ
+      boss.traverse(c => {
+        if (c.isMesh && c.material?.opacity !== undefined && c.material.opacity < 1) {
+          c.material.color.setHex(0xff4444);
+          setTimeout(() => { if (!cleaned && c.material) c.material.color.setHex(0xffffff); }, 80);
+        }
+      });
+      // シーン明るく
+      const br = (100 - bossHP) / 100;
+      scene.children.forEach(c => { if (c.isAmbientLight) c.intensity = 0.15 + br * 0.6; });
+      const v = Math.floor(br * 40);
+      scene.background = new THREE.Color(`rgb(${v},${v},${v + 10})`);
+      if (bossHP <= 0) bossExplode();
+    });
   }
 
+  // === ボス大爆発 ===
   function bossExplode() {
-    if (cleaned || bossExploded) return;
-    bossExploded = true;
-    playSound('bigExplode');
-    showBigMessage(wrap, d.explosion, 3000);
+    if (cleaned || bossExploded) return; bossExploded = true;
+    playSound('bigExplode'); showBigMessage(overlay, d.explosion, 3000);
+    scene.background = new THREE.Color(0xffffff);
+    timers.push(setTimeout(() => { if (!cleaned) scene.background = new THREE.Color(0x222244); }, 800));
+    if (boss) { scene.remove(boss); E.unregisterClick(boss); }
+    // 虹色パーティクル
+    [0xff0000,0xff8800,0xffff00,0x00ff00,0x0088ff,0x8800ff,0xff00ff].forEach(c => scene.add(E.createParticles(30,c,0.3)));
+    const hw = document.getElementById('boss-hp-wrap'); if (hw) hw.remove();
+    scene.children.forEach(c => { if(c.isAmbientLight)c.intensity=0.8; if(c.isDirectionalLight)c.intensity=1.0; });
 
-    boss.classList.add('boss-exploding');
-
-    // 大爆発フラッシュ
-    const flash = document.createElement('div');
-    flash.className = 'mega-flash';
-    wrap.appendChild(flash);
-
-    // パーティクル
-    for (let i = 0; i < 50; i++) {
-      const p = document.createElement('div');
-      p.className = 'victory-particle';
-      p.textContent = ['✨', '🌟', '💫', '⭐', '🎉', '🎊', '🏆'][Math.floor(Math.random() * 7)];
-      p.style.left = 50 + (Math.random() - 0.5) * 80 + '%';
-      p.style.top = 40 + (Math.random() - 0.5) * 60 + '%';
-      p.style.animationDelay = (Math.random() * 0.5) + 's';
-      wrap.appendChild(p);
-    }
-
-    setTimeout(() => {
+    timers.push(setTimeout(() => {
       if (cleaned) return;
-      showBigMessage(wrap, d.allClear, 4000);
-      playSound('clear');
-      addCoins(100);
-
-      // 伝説の称号
-      const title = document.createElement('div');
-      title.className = 'legend-title';
-      title.textContent = '🏆 伝説のプレイヤー 🏆';
-      wrap.appendChild(title);
-
-      setTimeout(() => {
-        if (!cleaned) onComplete();
-      }, 5000);
-    }, 3000);
+      showBigMessage(overlay, d.allClear, 4000); playSound('clear'); addCoins(100);
+      const txt = E.createTextSprite('伝説のプレイヤー！', {fontSize:36,color:'#ffd700'});
+      txt.position.set(0,5,0); scene.add(txt);
+      const hk = E.createHikari(); hk.position.set(0,0,0); hk.scale.setScalar(1.5); scene.add(hk);
+      timers.push(setTimeout(() => { if (!cleaned) onComplete(); }, 5000));
+    }, 3000));
   }
 
-  function gameLoop() {
-    if (cleaned) return;
+  // === メインループ ===
+  E.startLoop(() => {
+    if (cleaned) return; t += 0.016;
     if (phase === 'swarm') {
-      updateGhosts();
+      ghosts.forEach(g => {
+        if (!g.userData.alive) {
+          if (g.userData.defeatTime !== undefined) {
+            const e = t - g.userData.defeatTime;
+            g.position.y += 0.2; g.rotation.z += 0.15;
+            g.scale.setScalar(Math.max(0, 1 - e * 2.5));
+            if (e > 0.6) { scene.remove(g); E.unregisterClick(g); g.userData.defeatTime = undefined; }
+          }
+          return;
+        }
+        g.position.x += g.userData.dx; g.position.y += g.userData.dy; g.position.z += g.userData.dz;
+        g.position.y += Math.sin(t*2+g.userData.bobOffset)*0.005;
+        g.scale.setScalar(1 + Math.sin(t*3+g.userData.pulsePhase)*0.3);
+        if (g.position.x<-18||g.position.x>18) g.userData.dx*=-1;
+        if (g.position.y<0.5||g.position.y>6) g.userData.dy*=-1;
+        if (g.position.z<-12||g.position.z>12) g.userData.dz*=-1;
+        if (Math.random()<0.01) g.userData.dx=(Math.random()-0.5)*0.12;
+        if (Math.random()<0.01) g.userData.dz=(Math.random()-0.5)*0.12;
+        g.rotation.y = Math.sin(t*1.5+g.userData.bobOffset)*0.5;
+      });
     }
-    if (phase === 'boss' && boss) {
-      bossEyePhase += 0.05;
-      const eyes = boss.querySelector('.boss-eyes');
-      if (eyes) {
-        eyes.style.transform = `translate(${Math.sin(bossEyePhase) * 10}px, ${Math.cos(bossEyePhase * 0.7) * 5}px)`;
-      }
+    if (phase === 'boss' && boss && !bossExploded) {
+      boss.position.y = 2 + Math.sin(t*0.8)*0.5; boss.rotation.y = Math.sin(t*0.5)*0.3;
+      bossEyes.forEach(eye => { eye.position.x+=Math.sin(t*2)*0.002; eye.position.y+=Math.cos(t*1.5)*0.001; });
+      boss.scale.setScalar(1 + Math.sin(t*2)*0.08);
     }
-    animId = requestAnimationFrame(gameLoop);
-  }
-  animId = requestAnimationFrame(gameLoop);
+    redLight.intensity = 0.6+Math.sin(t*3)*0.3; blueLight.intensity = 0.4+Math.sin(t*2+1)*0.2;
+    redLight.position.x = Math.sin(t*0.7)*5; blueLight.position.z = Math.cos(t*0.5)*5;
+    camera.position.x = Math.sin(t*0.4)*1; camera.lookAt(0,2,0);
+  });
 
-  return {
-    cleanup() {
-      cleaned = true;
-      stopBGM();
-      if (animId) cancelAnimationFrame(animId);
-      if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
-    }
-  };
+  function cleanup() { cleaned=true; stopBGM(); timers.forEach(id=>{clearTimeout(id);clearInterval(id);});
+    E.stopLoop(); E.clearClicks(); E.disposeScene(scene); overlay.innerHTML=''; }
+  return { cleanup };
 }

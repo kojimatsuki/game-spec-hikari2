@@ -1,238 +1,286 @@
-// scenes.js - シーン遷移（タイトル/ワールド選択/エンディング）
+// scenes.js - 3Dシーン遷移（タイトル/ワールド選択/エンディング）
 
 import { GAME_TITLE, WORLDS, DIALOGUES } from './data.js';
 import { playSound } from './audio.js';
-import { createButton, showBigMessage } from './ui.js';
-import { getCoins, resetCoins } from './economy.js';
+import { getCoins } from './economy.js';
+import * as E from './engine3d.js';
+const THREE = E.THREE;
 
 export function initTitle(container, gameState, onStartGame) {
   let cleaned = false;
-  const wrap = document.createElement('div');
-  wrap.className = 'scene-title';
+  const scene = E.createScene(0x0f0c29);
+  scene.fog = new THREE.Fog(0x0f0c29, 10, 50);
+  const camera = E.createCamera(50);
+  camera.position.set(0, 5, 12);
+  camera.lookAt(0, 2, 0);
+  E.setScene(scene, camera);
 
-  // タイトル
-  const titleEl = document.createElement('h1');
-  titleEl.className = 'title-text';
-  titleEl.textContent = GAME_TITLE;
-  wrap.appendChild(titleEl);
+  // 床
+  const ground = E.createGridGround(40, 0x1a1a3e, 0x302b63);
+  scene.add(ground);
 
-  // 変身アニメーション
-  const hikariAnim = document.createElement('div');
-  hikariAnim.className = 'title-hikari';
-  const forms = ['👧✨', '🏍️👧', '🧙‍♀️✨', '🐱', '📺👧🎤'];
-  let formIdx = 0;
-  hikariAnim.textContent = forms[0];
-  wrap.appendChild(hikariAnim);
+  // ひかりちゃん
+  const hikari = E.createHikari();
+  hikari.position.set(0, 0, 0);
+  scene.add(hikari);
 
-  const formInterval = setInterval(() => {
+  // ブレインロット（奥に）
+  const br = E.createBrainrot(0);
+  br.position.set(8, 0, -10);
+  scene.add(br);
+
+  // うんこ達
+  const poops = [];
+  for (let i = 0; i < 5; i++) {
+    const p = E.createPoop();
+    p.position.set((Math.random() - 0.5) * 20, 8 + Math.random() * 5, (Math.random() - 0.5) * 10);
+    p.userData.vy = -0.03 - Math.random() * 0.02;
+    scene.add(p);
+    poops.push(p);
+  }
+
+  // タイトルテキスト
+  const titleSprite = E.createTextSprite(GAME_TITLE, { fontSize: 30, color: '#ffd700' });
+  titleSprite.position.set(0, 6, 0);
+  titleSprite.scale.set(12, 3, 1);
+  scene.add(titleSprite);
+
+  // HTML UI
+  const overlay = E.getOverlay();
+  overlay.innerHTML = '';
+  const btn = document.createElement('button');
+  btn.className = 'game-btn start-btn';
+  btn.textContent = '🎮 はじめる';
+  const startGame = (e) => {
+    e.preventDefault();
     if (cleaned) return;
-    formIdx = (formIdx + 1) % forms.length;
-    hikariAnim.classList.add('form-change');
-    setTimeout(() => {
-      hikariAnim.textContent = forms[formIdx];
-      hikariAnim.classList.remove('form-change');
-    }, 300);
-  }, 1500);
-
-  // ブレインロットが背景にチラッと
-  const brainrot = document.createElement('div');
-  brainrot.className = 'title-brainrot';
-  brainrot.textContent = '👾';
-  wrap.appendChild(brainrot);
-
-  // 飛んでくるうんこ
-  const poopInterval = setInterval(() => {
-    if (cleaned) return;
-    const poop = document.createElement('div');
-    poop.className = 'title-poop';
-    poop.textContent = '💩';
-    poop.style.left = (Math.random() * 80 + 10) + '%';
-    wrap.appendChild(poop);
-    setTimeout(() => { if (poop.parentNode) poop.parentNode.removeChild(poop); }, 2000);
-  }, 2000);
-
-  // はじめるボタン
-  const startBtn = createButton('🎮 はじめる', () => {
     playSound('clear');
     cleanup();
     onStartGame();
-  }, 'start-btn');
-  wrap.appendChild(startBtn);
+  };
+  btn.addEventListener('click', startGame);
+  btn.addEventListener('touchstart', startGame, { passive: false });
+  overlay.appendChild(btn);
 
-  container.appendChild(wrap);
+  let t = 0;
+  E.startLoop(() => {
+    if (cleaned) return;
+    t += 0.02;
+    hikari.rotation.y = Math.sin(t) * 0.5;
+    hikari.position.y = Math.sin(t * 2) * 0.2;
+    br.position.x = 8 + Math.sin(t * 0.5) * 3;
+    poops.forEach(p => {
+      p.position.y += p.userData.vy;
+      p.rotation.z += 0.02;
+      if (p.position.y < 0) p.position.y = 10;
+    });
+    camera.position.x = Math.sin(t * 0.3) * 2;
+  });
 
   function cleanup() {
     cleaned = true;
-    clearInterval(formInterval);
-    clearInterval(poopInterval);
-    if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+    E.stopLoop();
+    E.clearClicks();
+    E.disposeScene(scene);
+    overlay.innerHTML = '';
   }
-
   return { cleanup };
 }
 
 export function initWorldSelect(container, gameState, onSelectStage) {
   let cleaned = false;
-  const wrap = document.createElement('div');
-  wrap.className = 'scene-world-select';
+  const overlay = E.getOverlay();
+  overlay.innerHTML = '';
 
-  const title = document.createElement('h2');
-  title.className = 'select-title';
-  title.textContent = '🗺️ ワールドを選ぼう！';
-  wrap.appendChild(title);
+  const scene = E.createScene(0x1a1a2e);
+  const camera = E.createCamera(50);
+  camera.position.set(0, 8, 15);
+  camera.lookAt(0, 0, 0);
+  E.setScene(scene, camera);
 
-  const grid = document.createElement('div');
-  grid.className = 'world-grid';
+  const ground = E.createGridGround(30, 0x16213e, 0x0f3460);
+  scene.add(ground);
 
-  WORLDS.forEach((world, idx) => {
-    const card = document.createElement('div');
-    card.className = 'world-card';
-    const unlocked = idx === 0 || gameState.worldsCompleted[idx - 1];
+  // ワールドを3Dオブジェクトで表現
+  const worldObjects = [];
+  const worldData = [
+    { color: 0x8844aa, model: () => E.createToilet(), unlocked: true },
+    { color: 0x44aa44, model: () => E.createBuilding(2, 3, 2, 0xddddaa), unlocked: gameState.worldsCompleted[0] },
+    { color: 0xaa44ff, model: () => E.createDoll(0xff66aa), unlocked: gameState.worldsCompleted[1] },
+  ];
 
-    if (unlocked) {
-      card.classList.add('unlocked');
-      const completed = gameState.worldsCompleted[idx];
-      card.innerHTML = `
-        <div class="world-icon">${world.icon}</div>
-        <div class="world-name">ワールド${world.id}</div>
-        <div class="world-desc">${world.name}</div>
-        ${completed ? '<div class="world-clear">✅ クリア</div>' : ''}
-      `;
-      const selectWorld = (e) => {
-        e.preventDefault();
+  worldData.forEach((wd, i) => {
+    const g = new THREE.Group();
+    // Platform
+    const plat = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 0.5, 16), new THREE.MeshLambertMaterial({ color: wd.unlocked ? wd.color : 0x444444 }));
+    plat.position.y = 0.25;
+    g.add(plat);
+
+    if (wd.unlocked) {
+      const m = wd.model();
+      m.position.y = 0.5;
+      g.add(m);
+      // ラベル
+      const label = E.createTextSprite(`W${i + 1}: ${WORLDS[i].name}`, { fontSize: 28, color: '#ffffff' });
+      label.position.y = 4.5;
+      label.scale.set(6, 1.5, 1);
+      g.add(label);
+      if (gameState.worldsCompleted[i]) {
+        const check = E.createTextSprite('✅ クリア', { fontSize: 36, color: '#00ff00' });
+        check.position.y = 3.5;
+        check.scale.set(3, 0.8, 1);
+        g.add(check);
+      }
+    } else {
+      const lock = E.createTextSprite('🔒', { fontSize: 60 });
+      lock.position.y = 2;
+      lock.scale.set(2, 2, 1);
+      g.add(lock);
+    }
+
+    g.position.set((i - 1) * 6, 0, 0);
+    scene.add(g);
+    worldObjects.push(g);
+
+    if (wd.unlocked) {
+      E.registerClick(g, () => {
+        if (cleaned) return;
         playSound('tap');
         cleanup();
-        onSelectStage(world.stages[0].id);
-      };
-      card.addEventListener('click', selectWorld);
-      card.addEventListener('touchstart', selectWorld, { passive: false });
-    } else {
-      card.classList.add('locked');
-      card.innerHTML = `
-        <div class="world-icon">🔒</div>
-        <div class="world-name">ワールド${world.id}</div>
-        <div class="world-desc">???</div>
-      `;
+        onSelectStage(WORLDS[i].stages[0].id);
+      });
     }
-    grid.appendChild(card);
   });
 
   // 隠しステージ
-  const secretCard = document.createElement('div');
-  secretCard.className = 'world-card';
   const allClear = gameState.worldsCompleted.every(w => w);
+  const secretG = new THREE.Group();
+  const secretPlat = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 0.5, 16), new THREE.MeshLambertMaterial({ color: allClear ? 0xff0066 : 0x444444 }));
+  secretPlat.position.y = 0.25;
+  secretG.add(secretPlat);
   if (allClear) {
-    secretCard.classList.add('unlocked', 'secret');
-    secretCard.innerHTML = `
-      <div class="world-icon">💀</div>
-      <div class="world-name">隠しステージ</div>
-      <div class="world-desc">お化け連打バトル</div>
-      ${gameState.secretCompleted ? '<div class="world-clear">🏆 伝説</div>' : ''}
-    `;
-    const selectSecret = (e) => {
-      e.preventDefault();
+    const ghost = E.createGhost(1.5);
+    ghost.position.y = 0.5;
+    secretG.add(ghost);
+    const label = E.createTextSprite('隠しステージ', { fontSize: 32, color: '#ff6688' });
+    label.position.y = 4; label.scale.set(5, 1.2, 1);
+    secretG.add(label);
+    E.registerClick(secretG, () => {
+      if (cleaned) return;
       playSound('tap');
       cleanup();
       onSelectStage('secret');
-    };
-    secretCard.addEventListener('click', selectSecret);
-    secretCard.addEventListener('touchstart', selectSecret, { passive: false });
+    });
   } else {
-    secretCard.classList.add('locked');
-    secretCard.innerHTML = `
-      <div class="world-icon">🔒</div>
-      <div class="world-name">???</div>
-      <div class="world-desc">全ワールドクリアで解放</div>
-    `;
+    const lock = E.createTextSprite('🔒', { fontSize: 60 });
+    lock.position.y = 2; lock.scale.set(2, 2, 1);
+    secretG.add(lock);
   }
-  grid.appendChild(secretCard);
+  secretG.position.set(0, 0, -7);
+  scene.add(secretG);
 
-  wrap.appendChild(grid);
+  const coinLabel = document.createElement('div');
+  coinLabel.className = 'coin-display';
+  coinLabel.textContent = `💰 ${getCoins()} コイン`;
+  overlay.appendChild(coinLabel);
 
-  // コイン表示
-  const coinInfo = document.createElement('div');
-  coinInfo.className = 'coin-info';
-  coinInfo.textContent = `💰 ${getCoins()} コイン`;
-  wrap.appendChild(coinInfo);
-
-  container.appendChild(wrap);
+  let t = 0;
+  E.startLoop(() => {
+    t += 0.01;
+    worldObjects.forEach((wo, i) => { wo.position.y = Math.sin(t + i) * 0.2; });
+    secretG.position.y = Math.sin(t + 3) * 0.2;
+  });
 
   function cleanup() {
     cleaned = true;
-    if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+    E.stopLoop();
+    E.clearClicks();
+    E.disposeScene(scene);
+    overlay.innerHTML = '';
   }
-
   return { cleanup };
 }
 
 export function initEnding(container, gameState, onRestart) {
   let cleaned = false;
-  const wrap = document.createElement('div');
-  wrap.className = 'scene-ending';
-
+  const overlay = E.getOverlay();
+  overlay.innerHTML = '';
   const isSecret = gameState.secretCompleted;
-  const lines = isSecret ? DIALOGUES.ending.secret : DIALOGUES.ending.normal;
 
-  // エンディングタイトル
-  const endTitle = document.createElement('h1');
-  endTitle.className = 'ending-title';
-  endTitle.textContent = isSecret ? '🏆 真のエンディング 🏆' : '🎬 エンディング';
-  wrap.appendChild(endTitle);
+  const scene = E.createScene(0x0f0c29);
+  const camera = E.createCamera(50);
+  camera.position.set(0, 5, 10);
+  camera.lookAt(0, 2, 0);
+  E.setScene(scene, camera);
 
-  // ダイジェスト
-  const digest = document.createElement('div');
-  digest.className = 'ending-digest';
+  // 全キャラ集合
+  const hikari = E.createHikari();
+  hikari.position.set(0, 0, 0);
+  scene.add(hikari);
 
   if (isSecret) {
-    // 全キャラ集合
-    const chars = document.createElement('div');
-    chars.className = 'all-chars';
-    chars.textContent = '👧✨ 👾 👦👧👩‍🦰🧒👱 🧸 👩 🐱 📺';
-    digest.appendChild(chars);
+    const br = E.createBrainrot(0);
+    br.position.set(-4, 0, -2);
+    br.scale.setScalar(0.7);
+    scene.add(br);
+    for (let i = 0; i < 5; i++) {
+      const f = E.createBlockChar(0x44aa44 + i * 0x111111, 0xffdbac, 0.7);
+      f.position.set(-2 + i * 1.5, 0, 2);
+      scene.add(f);
+    }
   }
 
-  lines.forEach((line, i) => {
+  // パーティクル
+  const particles = E.createParticles(100, isSecret ? 0xffd700 : 0x6688ff, 0.15);
+  scene.add(particles);
+
+  // テキスト
+  const lines = isSecret ? DIALOGUES.ending.secret : DIALOGUES.ending.normal;
+  const endDiv = document.createElement('div');
+  endDiv.className = 'ending-overlay';
+  endDiv.innerHTML = `<h1 class="ending-title">${isSecret ? '🏆 真のエンディング 🏆' : '🎬 エンディング'}</h1>`;
+  lines.forEach((l, i) => {
     const p = document.createElement('p');
     p.className = 'ending-line';
-    p.textContent = line;
-    p.style.animationDelay = (i * 2) + 's';
-    digest.appendChild(p);
+    p.textContent = l;
+    p.style.animationDelay = (1 + i * 2) + 's';
+    endDiv.appendChild(p);
   });
+  const credits = document.createElement('p');
+  credits.className = 'ending-line';
+  credits.textContent = `💰 合計 ${getCoins()} コイン！ 原案: ひかりちゃん / プログラム: Claude Code`;
+  credits.style.animationDelay = (1 + lines.length * 2) + 's';
+  endDiv.appendChild(credits);
 
-  wrap.appendChild(digest);
+  const btnText = isSecret ? '🔄 もう一度あそぶ' : '▶ つぎへ';
+  const btn = document.createElement('button');
+  btn.className = 'game-btn restart-btn';
+  btn.textContent = btnText;
+  btn.style.animationDelay = '6s';
+  const restart = (e) => { e.preventDefault(); if (cleaned) return; playSound('tap'); cleanup(); onRestart(); };
+  btn.addEventListener('click', restart);
+  btn.addEventListener('touchstart', restart, { passive: false });
+  endDiv.appendChild(btn);
+  overlay.appendChild(endDiv);
 
-  // スタッフロール
-  const credits = document.createElement('div');
-  credits.className = 'credits';
-  credits.innerHTML = `
-    <p>🎮 ひかりちゃん大冒険</p>
-    <p>〜イタリアンブレインロットからの脱出〜</p>
-    <p>&nbsp;</p>
-    <p>原案: ひかりちゃん</p>
-    <p>プログラム: Claude Code</p>
-    <p>&nbsp;</p>
-    <p>ありがとうございました！</p>
-    <p>💰 合計 ${getCoins()} コイン集めました！</p>
-  `;
-  wrap.appendChild(credits);
-
-  // ボタン（シークレットクリア後は「もう一度」、通常は「つぎへ」）
-  const btnText = isSecret ? '🔄 もう一度あそぶ' : '▶ つぎへ（隠しステージ解放！）';
-  const restartBtn = createButton(btnText, () => {
-    playSound('tap');
-    cleanup();
-    onRestart();
-  }, 'restart-btn');
-  restartBtn.style.animationDelay = '6s';
-  wrap.appendChild(restartBtn);
-
-  container.appendChild(wrap);
   playSound('clear');
+
+  let t = 0;
+  E.startLoop(() => {
+    t += 0.01;
+    hikari.rotation.y += 0.01;
+    hikari.position.y = Math.sin(t * 2) * 0.3;
+    E.updateParticles(particles);
+    camera.position.x = Math.sin(t * 0.5) * 3;
+    camera.lookAt(0, 2, 0);
+  });
 
   function cleanup() {
     cleaned = true;
-    if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+    E.stopLoop();
+    E.clearClicks();
+    E.disposeScene(scene);
+    overlay.innerHTML = '';
   }
-
   return { cleanup };
 }

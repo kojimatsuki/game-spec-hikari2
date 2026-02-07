@@ -1,5 +1,6 @@
-// main.js - ゲーム初期化・ワールド管理
+// main.js - ゲーム初期化・ワールド管理（3Dポリゴン版）
 
+import { initEngine } from './engine3d.js';
 import { initTitle, initWorldSelect, initEnding } from './scenes.js';
 import { initW1Poop } from './w1-poop.js';
 import { initW1Toilet } from './w1-toilet.js';
@@ -18,6 +19,9 @@ import { removeCoinUI } from './ui.js';
 import { resetForm } from './hikari.js';
 
 const container = document.getElementById('game-container');
+
+// 3Dエンジン初期化（キャンバス＋オーバーレイ作成）
+initEngine(container);
 
 const gameState = {
   worldsCompleted: [false, false, false],
@@ -48,7 +52,6 @@ function cleanupCurrent() {
     currentCleanup = null;
   }
   removeCoinUI();
-  container.innerHTML = '';
 }
 
 function loadScene(sceneId) {

@@ -1,254 +1,432 @@
-// w2-flying.js - W2ステージ3: 空飛びうんちフライト
+// w2-flying.js - W2ステージ3: 空飛びうんちフライト（3Dポリゴン版）
+// サイドビュー3Dシーンでフラッピーバード風に飛ぶ
+// クリック/ホールドで上昇、離すと落下、60フレームごとにうんち投下
 
 import { DIALOGUES } from './data.js';
 import { playSound, startBGM, stopBGM } from './audio.js';
 import { addCoins } from './economy.js';
-import { showMessage, showBigMessage, initCoinUI } from './ui.js';
-import { setForm } from './hikari.js';
+import { showMessage, showBigMessage } from './ui.js';
+import * as E from './engine3d.js';
+const THREE = E.THREE;
 
 export function initW2Flying(container, gameState, onComplete) {
   const d = DIALOGUES.w2;
   let cleaned = false;
-  let animId = null;
-  let playerY = 50;
+  let t = 0;
+  let frameCount = 0;
+  let playerY = 5;
   let velocity = 0;
-  const gravity = 0.15;
-  const flapForce = -4;
-  let scrollX = 0;
+  const gravity = 0.012;
+  const flapForce = -0.06;
   let distance = 0;
   const GOAL = 800;
-  let obstacles = [];
-  let poops = [];
-  let poopTimer = 0;
   let pressing = false;
-  let score = 0;
+  let poopTimer = 0;
+  let bonusScore = 0;
   let finished = false;
 
-  const wrap = document.createElement('div');
-  wrap.className = 'stage-w2-flying';
+  // === シーン作成（青空サイドビュー） ===
+  const scene = E.createScene(0x66bbff);
+  scene.fog = new THREE.Fog(0x66bbff, 40, 100);
+  const camera = E.createCamera(50);
+  // サイドビュー配置
+  camera.position.set(0, 6, 20);
+  camera.lookAt(0, 5, 0);
+  E.setScene(scene, camera);
 
-  // 空背景
-  const sky = document.createElement('div');
-  sky.className = 'sky-bg';
-  wrap.appendChild(sky);
+  // 太陽
+  const sunLight = new THREE.PointLight(0xffee88, 1.0, 80);
+  sunLight.position.set(20, 25, 10);
+  scene.add(sunLight);
 
-  // 雲を配置
-  for (let i = 0; i < 8; i++) {
-    const cloud = document.createElement('div');
-    cloud.className = 'cloud';
-    cloud.textContent = '☁️';
-    cloud.dataset.x = Math.random() * 120;
-    cloud.style.top = (10 + Math.random() * 40) + '%';
-    cloud.style.fontSize = (30 + Math.random() * 30) + 'px';
-    cloud.style.opacity = 0.5 + Math.random() * 0.5;
-    wrap.appendChild(cloud);
-    obstacles.push({ el: cloud, type: 'cloud' });
+  // === 地面（緑の草原） ===
+  const groundGeo = new THREE.BoxGeometry(200, 1, 20);
+  const groundMat = new THREE.MeshLambertMaterial({ color: 0x44aa33 });
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.position.set(0, -0.5, 0);
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // 地面のライン（道路/茶色の土）
+  const dirtStripe = new THREE.Mesh(
+    new THREE.BoxGeometry(200, 0.05, 3),
+    new THREE.MeshLambertMaterial({ color: 0x886633 })
+  );
+  dirtStripe.position.set(0, 0.01, 0);
+  scene.add(dirtStripe);
+
+  // === 雲（3D球の集合体） ===
+  const clouds = [];
+  for (let i = 0; i < 10; i++) {
+    const cloudGroup = new THREE.Group();
+    const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    // 雲の本体（3つの球を重ねる）
+    for (let j = 0; j < 3; j++) {
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.8 + Math.random() * 0.5, 8, 8),
+        cloudMat
+      );
+      sphere.position.set(j * 0.7 - 0.7, Math.random() * 0.3, 0);
+      cloudGroup.add(sphere);
+    }
+    cloudGroup.position.set(
+      -30 + Math.random() * 80,
+      8 + Math.random() * 6,
+      -5 - Math.random() * 10
+    );
+    cloudGroup.userData.speed = 0.02 + Math.random() * 0.02;
+    scene.add(cloudGroup);
+    clouds.push(cloudGroup);
   }
 
-  // プレイヤー
-  const player = document.createElement('div');
-  player.className = 'fly-player';
-  player.textContent = '👧🕊️';
-  wrap.appendChild(player);
+  // === ひかりちゃん（飛行キャラ） ===
+  const hikari = E.createHikari();
+  hikari.scale.setScalar(0.8);
+  hikari.position.set(-5, playerY, 0);
+  scene.add(hikari);
 
-  // 距離表示
-  const distEl = document.createElement('div');
-  distEl.className = 'dist-display';
-  distEl.textContent = '✈️ 0m';
-  wrap.appendChild(distEl);
+  // 翼エフェクト（小さなボックスを腕の横に）
+  const wingMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const leftWing = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.5, 1.2), wingMat);
+  leftWing.position.set(-0.8, 1.2, -0.2);
+  hikari.add(leftWing);
+  const rightWing = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.5, 1.2), wingMat);
+  rightWing.position.set(0.8, 1.2, -0.2);
+  hikari.add(rightWing);
 
-  // スコア
-  const scoreEl = document.createElement('div');
-  scoreEl.className = 'score-display';
-  scoreEl.textContent = '💩ボーナス: 0';
-  wrap.appendChild(scoreEl);
+  // === 障害物管理 ===
+  const obstacles = [];
+  const groundEnemies = [];
+  const poops = [];
 
-  initCoinUI(wrap);
-  showMessage(wrap, d.flyIntro, 3000);
-  startBGM('w2fly');
-  setForm('flying');
-
-  container.appendChild(wrap);
-
-  // 操作
-  function startPress(e) {
-    e.preventDefault();
-    if (cleaned) return;
-    pressing = true;
-  }
-  function endPress(e) {
-    pressing = false;
-  }
-  wrap.addEventListener('mousedown', startPress);
-  wrap.addEventListener('touchstart', startPress, { passive: false });
-  wrap.addEventListener('mouseup', endPress);
-  wrap.addEventListener('touchend', endPress);
-
-  // 障害物生成
-  let spawnTimer = 0;
+  // 障害物生成（空中のボックスや鳥型）
   function spawnObstacle() {
-    const types = ['🐦', '✈️', '🪁'];
-    const obs = document.createElement('div');
-    obs.className = 'fly-obstacle';
-    obs.textContent = types[Math.floor(Math.random() * types.length)];
-    obs.dataset.x = 105;
-    obs.dataset.y = 10 + Math.random() * 70;
-    wrap.appendChild(obs);
-    obstacles.push({ el: obs, type: 'obstacle', x: 105, y: parseFloat(obs.dataset.y) });
+    if (cleaned || finished) return;
+    const g = new THREE.Group();
+    const typeRoll = Math.random();
+
+    if (typeRoll < 0.5) {
+      // ボックス障害物
+      const colors = [0x888888, 0xcc4444, 0x4444cc];
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 1.5, 1.5),
+        new THREE.MeshLambertMaterial({ color: colors[Math.floor(Math.random() * colors.length)] })
+      );
+      mesh.castShadow = true;
+      g.add(mesh);
+    } else {
+      // 鳥型障害物（翼を広げた形）
+      const body = new THREE.Mesh(
+        new THREE.SphereGeometry(0.4, 8, 8),
+        new THREE.MeshLambertMaterial({ color: 0x333333 })
+      );
+      g.add(body);
+      const w1 = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 0.08, 0.6),
+        new THREE.MeshLambertMaterial({ color: 0x444444 })
+      );
+      w1.position.set(-0.8, 0, 0);
+      g.add(w1);
+      const w2 = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 0.08, 0.6),
+        new THREE.MeshLambertMaterial({ color: 0x444444 })
+      );
+      w2.position.set(0.8, 0, 0);
+      g.add(w2);
+    }
+
+    const yPos = 2 + Math.random() * 8;
+    g.position.set(30, yPos, 0);
+    g.userData.type = 'obstacle';
+    g.userData.hit = false;
+    scene.add(g);
+    obstacles.push(g);
   }
 
-  // 地面の敵
+  // 地面敵生成（小さな色つきボックス）
   function spawnGroundEnemy() {
-    const enemies = ['👾', '🐛', '🦂'];
-    const en = document.createElement('div');
-    en.className = 'ground-enemy';
-    en.textContent = enemies[Math.floor(Math.random() * enemies.length)];
-    en.dataset.x = 105;
-    wrap.appendChild(en);
-    obstacles.push({ el: en, type: 'ground', x: 105 });
+    if (cleaned || finished) return;
+    const colors = [0xff4444, 0x44ff44, 0xff8800, 0x8844ff];
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(0.8, 0.8, 0.8),
+      new THREE.MeshLambertMaterial({ color: colors[Math.floor(Math.random() * colors.length)] })
+    );
+    body.position.y = 0.4;
+    body.castShadow = true;
+    g.add(body);
+    // 目
+    const eyeMat = new THREE.MeshLambertMaterial({ color: 0x000000 });
+    const eye1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.05), eyeMat);
+    eye1.position.set(-0.15, 0.55, 0.41);
+    g.add(eye1);
+    const eye2 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.05), eyeMat);
+    eye2.position.set(0.15, 0.55, 0.41);
+    g.add(eye2);
+
+    g.position.set(30, 0, 0);
+    g.userData.type = 'ground';
+    g.userData.hit = false;
+    scene.add(g);
+    groundEnemies.push(g);
   }
 
-  function gameLoop() {
-    if (cleaned) return;
-
-    // 物理
-    if (pressing) {
-      velocity += flapForce * 0.1;
-      if (velocity < -3) velocity = -3;
-    }
-    velocity += gravity;
-    playerY += velocity;
-    if (playerY < 5) { playerY = 5; velocity = 0; }
-    if (playerY > 85) { playerY = 85; velocity = 0; }
-
-    player.style.top = playerY + '%';
-    player.style.left = '15%';
-    player.style.transform = `rotate(${velocity * 3}deg)`;
-
-    // スクロール
-    scrollX += 2;
-    distance += 0.5;
-    distEl.textContent = `✈️ ${Math.floor(distance)}m`;
-
-    // うんち自動ドロップ
-    poopTimer++;
-    if (poopTimer >= 60) {
-      poopTimer = 0;
-      dropPoop();
-    }
-
-    // 障害物更新
-    spawnTimer++;
-    if (spawnTimer % 80 === 0) spawnObstacle();
-    if (spawnTimer % 120 === 0) spawnGroundEnemy();
-
-    obstacles = obstacles.filter(o => {
-      if (o.type === 'cloud') {
-        let cx = parseFloat(o.el.dataset.x) - 0.3;
-        if (cx < -20) cx = 120;
-        o.el.dataset.x = cx;
-        o.el.style.left = cx + '%';
-        return true;
-      }
-      if (o.type === 'obstacle') {
-        o.x -= 2;
-        o.el.style.left = o.x + '%';
-        o.el.style.top = o.y + '%';
-        // 当たり判定
-        if (Math.abs(o.x - 15) < 5 && Math.abs(o.y - playerY) < 8) {
-          showMessage(wrap, '💥 ぶつかった！', 600);
-          playSound('hit');
-          distance = Math.max(0, distance - 15);
-        }
-        if (o.x < -10) {
-          if (o.el.parentNode) o.el.parentNode.removeChild(o.el);
-          return false;
-        }
-        return true;
-      }
-      if (o.type === 'ground') {
-        o.x -= 2;
-        o.el.style.left = o.x + '%';
-        if (o.x < -10) {
-          if (o.el.parentNode) o.el.parentNode.removeChild(o.el);
-          return false;
-        }
-        return true;
-      }
-      return true;
-    });
-
-    // うんち更新
-    poops = poops.filter(p => {
-      p.y += 2;
-      p.x -= 0.5;
-      p.el.style.left = p.x + '%';
-      p.el.style.top = p.y + '%';
-      p.el.style.transform = `rotate(${p.y * 5}deg)`;
-
-      // 地面の敵に当たったかチェック
-      obstacles.forEach(o => {
-        if (o.type === 'ground' && Math.abs(o.x - p.x) < 5 && p.y > 82) {
-          score++;
-          scoreEl.textContent = `💩ボーナス: ${score}`;
-          addCoins(3);
-          showMessage(wrap, '💩命中！+3', 600);
-          playSound('coin');
-          if (o.el.parentNode) o.el.parentNode.removeChild(o.el);
-          o.x = -999;
-        }
-      });
-
-      if (p.y > 95) {
-        if (p.el.parentNode) p.el.parentNode.removeChild(p.el);
-        return false;
-      }
-      return true;
-    });
-
-    // ゴール
-    if (distance >= GOAL) {
-      finishFlight();
-      return;
-    }
-
-    animId = requestAnimationFrame(gameLoop);
-  }
-
+  // うんち投下
   function dropPoop() {
-    const p = document.createElement('div');
-    p.className = 'dropped-poop';
-    p.textContent = '💩';
-    const obj = { el: p, x: 15, y: playerY + 5 };
-    wrap.appendChild(p);
-    poops.push(obj);
+    if (cleaned || finished) return;
+    const poop = E.createPoop();
+    poop.scale.setScalar(0.5);
+    poop.position.set(hikari.position.x, hikari.position.y - 0.5, 0);
+    poop.userData.vy = 0;
+    poop.userData.active = true;
+    scene.add(poop);
+    poops.push(poop);
     playSound('poop');
   }
 
+  // === 操作：クリック/タッチでホールド上昇 ===
+  const overlay = E.getOverlay();
+  overlay.innerHTML = '';
+
+  // 透明クリック壁
+  const clickWall = new THREE.Mesh(
+    new THREE.PlaneGeometry(60, 30),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  clickWall.position.set(0, 8, 15);
+  scene.add(clickWall);
+
+  // canvas上でのマウス/タッチ操作
+  const canvas = E.getCanvas();
+  function startPress(e) { e.preventDefault(); if (!cleaned) pressing = true; }
+  function endPress() { pressing = false; }
+  canvas.addEventListener('mousedown', startPress);
+  canvas.addEventListener('touchstart', startPress, { passive: false });
+  canvas.addEventListener('mouseup', endPress);
+  canvas.addEventListener('touchend', endPress);
+
+  // === UI表示 ===
+  // 距離カウンター
+  const distEl = document.createElement('div');
+  distEl.style.cssText = 'position:absolute;top:20px;left:50%;transform:translateX(-50%);font-size:24px;color:#fff;text-shadow:2px 2px 4px #000;z-index:10;';
+  distEl.textContent = '✈️ 0m';
+  overlay.appendChild(distEl);
+
+  // ボーナススコア
+  const scoreEl = document.createElement('div');
+  scoreEl.style.cssText = 'position:absolute;top:55px;left:50%;transform:translateX(-50%);font-size:18px;color:#ffcc00;text-shadow:1px 1px 3px #000;z-index:10;';
+  scoreEl.textContent = '💩ボーナス: 0';
+  overlay.appendChild(scoreEl);
+
+  startBGM('w2fly');
+  showMessage(overlay, d.flyIntro, 3000);
+
+  // === ゴール到達 ===
   function finishFlight() {
     if (cleaned || finished) return;
     finished = true;
     stopBGM();
-    showBigMessage(wrap, d.flyComplete, 2500);
+    showBigMessage(overlay, d.flyComplete, 2500);
     playSound('clear');
     addCoins(15);
     setTimeout(() => {
-      showBigMessage(wrap, d.w2Clear, 3000);
+      if (cleaned) return;
+      showBigMessage(overlay, d.w2Clear, 3000);
       setTimeout(() => {
         if (!cleaned) onComplete();
       }, 3500);
     }, 3000);
   }
 
-  animId = requestAnimationFrame(gameLoop);
+  // === 背景の建物（スクロール用） ===
+  const bgBuildings = [];
+  for (let i = 0; i < 6; i++) {
+    const h = 2 + Math.random() * 4;
+    const building = E.createBuilding(
+      1.5 + Math.random() * 2, h, 2,
+      0x777777 + Math.floor(Math.random() * 0x444444)
+    );
+    building.position.set(-20 + i * 10, 0, -6);
+    scene.add(building);
+    bgBuildings.push(building);
+  }
 
-  return {
-    cleanup() {
-      cleaned = true;
-      stopBGM();
-      if (animId) cancelAnimationFrame(animId);
-      poops.forEach(p => { if (p.el.parentNode) p.el.parentNode.removeChild(p.el); });
-      if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+  // === メインループ ===
+  E.startLoop(() => {
+    if (cleaned) return;
+    t += 0.016;
+    frameCount++;
+
+    // 物理演算
+    if (pressing) {
+      velocity += flapForce;
+      if (velocity < -0.25) velocity = -0.25;
+      // 翼はばたきアニメ
+      leftWing.rotation.z = Math.sin(t * 15) * 0.5;
+      rightWing.rotation.z = -Math.sin(t * 15) * 0.5;
+    } else {
+      leftWing.rotation.z = Math.sin(t * 3) * 0.15;
+      rightWing.rotation.z = -Math.sin(t * 3) * 0.15;
     }
-  };
+    velocity += gravity;
+    playerY += velocity;
+
+    // 上下制限
+    if (playerY < 1.2) { playerY = 1.2; velocity = 0; }
+    if (playerY > 14) { playerY = 14; velocity = 0; }
+
+    hikari.position.y = playerY;
+    // 傾きアニメ
+    hikari.rotation.z = velocity * 1.5;
+
+    // 距離更新
+    if (!finished) {
+      distance += 0.5;
+      distEl.textContent = `✈️ ${Math.floor(distance)}m`;
+    }
+
+    // うんち自動投下（60フレームごと）
+    poopTimer++;
+    if (poopTimer >= 60 && !finished) {
+      poopTimer = 0;
+      dropPoop();
+    }
+
+    // 障害物生成
+    if (frameCount % 80 === 0 && !finished) spawnObstacle();
+    if (frameCount % 120 === 0 && !finished) spawnGroundEnemy();
+
+    // 障害物更新
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const obs = obstacles[i];
+      obs.position.x -= 0.15;
+      obs.rotation.y += 0.02;
+
+      // 当たり判定
+      if (!obs.userData.hit) {
+        const odx = obs.position.x - hikari.position.x;
+        const ody = obs.position.y - playerY;
+        if (Math.abs(odx) < 1.5 && Math.abs(ody) < 1.5) {
+          obs.userData.hit = true;
+          showMessage(overlay, '💥 ぶつかった！', 600);
+          playSound('hit');
+          distance = Math.max(0, distance - 15);
+          // 障害物を吹き飛ばす
+          obs.position.y += 5;
+        }
+      }
+
+      // 画面外削除
+      if (obs.position.x < -25) {
+        scene.remove(obs);
+        obstacles.splice(i, 1);
+      }
+    }
+
+    // 地面敵更新
+    for (let i = groundEnemies.length - 1; i >= 0; i--) {
+      const en = groundEnemies[i];
+      en.position.x -= 0.12;
+      // 小さな跳ねアニメ
+      en.children[0].position.y = 0.4 + Math.abs(Math.sin(t * 5 + i)) * 0.1;
+
+      if (en.position.x < -25) {
+        scene.remove(en);
+        groundEnemies.splice(i, 1);
+      }
+    }
+
+    // うんち更新＆当たり判定
+    for (let i = poops.length - 1; i >= 0; i--) {
+      const p = poops[i];
+      if (!p.userData.active) continue;
+
+      p.userData.vy += 0.008; // 重力
+      p.position.y -= p.userData.vy;
+      p.position.x -= 0.03; // 少し後方へ流れる
+      p.rotation.x += 0.1;
+      p.rotation.z += 0.05;
+
+      // 地面に到達
+      if (p.position.y <= 0.3) {
+        // 地面の敵との当たり判定
+        let hitEnemy = false;
+        for (let j = groundEnemies.length - 1; j >= 0; j--) {
+          const en = groundEnemies[j];
+          if (en.userData.hit) continue;
+          const ex = Math.abs(en.position.x - p.position.x);
+          if (ex < 1.5) {
+            hitEnemy = true;
+            en.userData.hit = true;
+            bonusScore++;
+            scoreEl.textContent = `💩ボーナス: ${bonusScore}`;
+            addCoins(3);
+            showMessage(overlay, '💩命中！+3', 600);
+            playSound('coin');
+            // 敵が吹っ飛ぶ
+            en.position.y += 3;
+            en.rotation.z = Math.PI;
+            setTimeout(() => {
+              scene.remove(en);
+              const idx = groundEnemies.indexOf(en);
+              if (idx >= 0) groundEnemies.splice(idx, 1);
+            }, 500);
+            break;
+          }
+        }
+
+        // うんち消去
+        p.userData.active = false;
+        scene.remove(p);
+        poops.splice(i, 1);
+        continue;
+      }
+
+      // 画面外削除
+      if (p.position.x < -25 || p.position.y < -2) {
+        p.userData.active = false;
+        scene.remove(p);
+        poops.splice(i, 1);
+      }
+    }
+
+    // ゴールチェック
+    if (distance >= GOAL && !finished) {
+      finishFlight();
+    }
+
+    // 雲スクロール
+    clouds.forEach(c => {
+      c.position.x -= c.userData.speed;
+      if (c.position.x < -35) c.position.x = 50;
+    });
+
+    // 背景建物スクロール
+    bgBuildings.forEach(b => {
+      b.position.x -= 0.05;
+      if (b.position.x < -35) b.position.x += 60;
+    });
+
+    // カメラ追従（軽い上下揺れ）
+    camera.position.y = 6 + (playerY - 5) * 0.2;
+    camera.position.x = Math.sin(t * 0.5) * 0.3;
+    camera.lookAt(hikari.position.x + 3, playerY * 0.5 + 2, 0);
+  });
+
+  // === クリーンアップ ===
+  function cleanup() {
+    cleaned = true;
+    stopBGM();
+    E.stopLoop();
+    E.clearClicks();
+    E.disposeScene(scene);
+    overlay.innerHTML = '';
+    // イベントリスナー解除
+    canvas.removeEventListener('mousedown', startPress);
+    canvas.removeEventListener('touchstart', startPress);
+    canvas.removeEventListener('mouseup', endPress);
+    canvas.removeEventListener('touchend', endPress);
+  }
+
+  return { cleanup };
 }
